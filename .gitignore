@@ -9,8 +9,9 @@ __pycache__/
 dist/
 build/
 
-# Boltzmann brain (data — do not commit; recreate with `redteam brain init`)
+# Boltzmann brain — local state, not code (recreate with `braintools init`)
 /brain/
+vitruvio.toml
 
 # Local env / secrets
 .env

@@ -75,6 +75,9 @@ def ingest(
     subject: Annotated[
         str | None, typer.Option(help="Tag every proposal with this subject.")
     ] = None,
+    origin: Annotated[
+        str | None, typer.Option(help="Where the source came from. Defaults to the path.")
+    ] = None,
     dry_run: Annotated[
         bool, typer.Option("--dry-run", help="Propose and validate, commit nothing.")
     ] = False,
@@ -84,7 +87,7 @@ def ingest(
         _guard(
             lambda: _brain().ingest(
                 source, dry_run=dry_run, proposer=proposer,
-                media_type=media_type, subject=subject,
+                media_type=media_type, subject=subject, origin=origin,
             )
         )
     )

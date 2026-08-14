@@ -169,6 +169,7 @@ class Vitruvio:
         proposer: str | None = None,
         media_type: str | None = None,
         subject: str | None = None,
+        origin: str | None = None,
     ) -> Result:
         args = ["ingest", "run", *self._brain_args(), "--path", str(source)]
         if proposer:
@@ -177,6 +178,8 @@ class Vitruvio:
             args += ["--media-type", media_type]
         if subject:
             args += ["--subject", subject]
+        if origin:
+            args += ["--origin", origin]
         if dry_run:
             args.append("--dry-run")
         return self.run(args)
