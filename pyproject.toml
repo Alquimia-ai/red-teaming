@@ -1,0 +1,21 @@
+# Workspace root (virtual — builds nothing itself). Two members:
+#   packages/redteam    — the deployable red-teaming APP (ships to k8s; no brain code)
+#   packages/braintools — LOCAL brain-curation tooling (vitruvio wrapper; never deployed)
+# The two never import each other. They meet only at a data boundary (knowledge in,
+# findings out) — see CLAUDE.md.
+
+[tool.uv.workspace]
+members = ["packages/*"]
+
+[dependency-groups]
+dev = ["pytest>=8.0", "ruff>=0.6"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.pytest.ini_options]
+testpaths = ["packages"]
