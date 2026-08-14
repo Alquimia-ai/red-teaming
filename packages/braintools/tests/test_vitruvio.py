@@ -118,3 +118,45 @@ def test_browse_is_not_json_and_returns_code():
     assert code == 0
     assert "--json" not in runner.calls[0]
     assert "browse" in runner.calls[0] and "--brain" in runner.calls[0]
+
+
+def test_verify_calls_brain_verify():
+    runner = FakeRunner(stdout=envelope("brain.verify", data={"verified": True}))
+    assert make(runner).verify().data == {"verified": True}
+    argv = runner.calls[0]
+    assert argv[:2] == ["vitruvio", "brain"] and "verify" in argv
+
+
+def test_push_builds_dist_push_with_reference_tag_and_local():
+    runner = FakeRunner(stdout=envelope("dist.push", data={"digest": "sha256:abc"}))
+    make(runner).push(reference="ghcr.io/org/brain", tag="v1", local="/tmp/reg")
+    argv = runner.calls[0]
+    assert argv[:2] == ["vitruvio", "dist"] and "push" in argv
+    assert "--reference" in argv and "ghcr.io/org/brain" in argv
+    assert "--tag" in argv and "v1" in argv
+    assert "--local" in argv and "/tmp/reg" in argv
+
+
+def test_pull_builds_dist_pull_and_can_be_anonymous():
+    runner = FakeRunner(stdout=envelope("dist.pull", data={}))
+    make(runner).pull(reference="ghcr.io/org/brain", tag="v1", anonymous=True)
+    argv = runner.calls[0]
+    assert argv[:2] == ["vitruvio", "dist"] and "pull" in argv
+    assert "--anonymous" in argv
+
+
+def test_config_set_builds_config_set():
+    runner = FakeRunner(stdout=envelope("config.set", data={}))
+    make(runner).config_set("registry.reference", "ghcr.io/org/brain")
+    argv = runner.calls[0]
+    assert argv[:3] == ["vitruvio", "config", "set"]
+    assert "registry.reference" in argv and "ghcr.io/org/brain" in argv
+
+
+def test_extract_digest_reads_common_shapes():
+    from braintools.cli import _extract_digest
+
+    assert _extract_digest({"digest": "sha256:abc"}) == "sha256:abc"
+    assert _extract_digest({"snapshot": {"digest": "sha256:def"}}) == "sha256:def"
+    assert _extract_digest({"nothing": 1}) is None
+    assert _extract_digest("not a dict") is None

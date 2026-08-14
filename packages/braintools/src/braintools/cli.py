@@ -9,6 +9,9 @@ never prose. Failures and warnings are surfaced on stderr.
 from __future__ import annotations
 
 import json
+import shutil
+import subprocess
+import tempfile
 from pathlib import Path
 from typing import Annotated, Any
 
@@ -157,3 +160,150 @@ def ingest_findings(
             lambda: _brain().ingest(findings, proposer=proposer, subject=subject)
         )
     )
+
+
+# -- reproducible seed from source ---------------------------------------------
+
+_MARKDOWN_EXTS = {".md", ".markdown"}
+
+
+def _tex_to_markdown(tex: Path, out_dir: Path) -> Path:
+    """Convert a LaTeX source to GitHub-flavored Markdown with pandoc."""
+    if shutil.which("pandoc") is None:
+        typer.echo(
+            f"pandoc is required to seed LaTeX sources ({tex.name}) but was not found. "
+            "Install it (e.g. `brew install pandoc`) and retry.",
+            err=True,
+        )
+        raise typer.Exit(code=127)
+    md = out_dir / (tex.stem + ".md")
+    proc = subprocess.run(  # noqa: S603 - args are our own + a user-provided path
+        ["pandoc", "-f", "latex", "-t", "gfm", str(tex), "-o", str(md)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if proc.returncode != 0:
+        typer.echo(f"pandoc failed on {tex.name}: {proc.stderr.strip()}", err=True)
+        raise typer.Exit(code=1)
+    return md
+
+
+@app.command("seed")
+def seed(
+    sources: Annotated[
+        Path | None,
+        typer.Option(help="Directory of source documents. Default: $BRAINTOOLS_SOURCES_DIR."),
+    ] = None,
+    subject: Annotated[str, typer.Option(help="Subject to tag every source under.")] = "roastme",
+    actor: Annotated[str | None, typer.Option()] = None,
+    actor_kind: Annotated[str | None, typer.Option()] = None,
+) -> None:
+    """Rebuild the brain deterministically from committed source documents.
+
+    Ingests every file under the sources directory (Markdown directly; LaTeX via a
+    pandoc conversion, with --origin pointing at the .tex), then builds the indices.
+    Idempotent: identical content dedupes to the same content-addressed blocks.
+    """
+    src = sources or config.sources_dir()
+    if not src.is_dir():
+        typer.echo(f"sources directory not found: {src}", err=True)
+        raise typer.Exit(code=1)
+
+    b = _brain()
+    _guard(lambda: b.init(actor=actor, actor_kind=actor_kind))  # opens if it exists
+
+    files = sorted(p for p in src.rglob("*") if p.is_file())
+    ingested: list[dict[str, Any]] = []
+    with tempfile.TemporaryDirectory() as td:
+        tmp = Path(td)
+        for f in files:
+            ext = f.suffix.lower()
+            if ext in _MARKDOWN_EXTS:
+                res = _guard(lambda f=f: b.ingest(f, subject=subject))
+            elif ext == ".tex":
+                md = _tex_to_markdown(f, tmp)
+                res = _guard(
+                    lambda md=md, f=f: b.ingest(
+                        md, media_type="text/markdown", subject=subject, origin=str(f)
+                    )
+                )
+            else:
+                ingested.append({"file": f.name, "skipped": "unsupported extension"})
+                continue
+            proposed = (res.data or {}).get("proposed") if isinstance(res.data, dict) else None
+            ingested.append({"file": f.name, "proposed": proposed})
+
+    index_res = _guard(lambda: b.index())
+    _emit(Result(data={"sources": str(src), "ingested": ingested, "indexed": True},
+                 warnings=index_res.warnings))
+
+
+# -- distribution (OCI registry) -----------------------------------------------
+
+def _extract_digest(data: Any) -> str | None:
+    """Best-effort snapshot digest from a push/pull envelope."""
+    if not isinstance(data, dict):
+        return None
+    for key in ("digest", "snapshot", "pushed", "manifest"):
+        val = data.get(key)
+        if isinstance(val, str) and val.startswith("sha256:"):
+            return val
+        if isinstance(val, dict):
+            for k in ("digest", "snapshot"):
+                if isinstance(val.get(k), str):
+                    return val[k]
+    return None
+
+
+@app.command("publish")
+def publish(
+    tag: Annotated[str, typer.Argument(help="Tag to publish under, e.g. v1.")],
+    reference: Annotated[
+        str | None, typer.Option(help="host/namespace/repo. Default: configured registry.")
+    ] = None,
+    local: Annotated[
+        str | None,
+        typer.Option(help="Publish to a filesystem OCI registry dir (no network/creds)."),
+    ] = None,
+    anonymous: Annotated[bool, typer.Option("--anonymous")] = False,
+) -> None:
+    """Publish the brain to the registry and update brain.lock (the committed pin)."""
+    ref = reference or config.registry_reference()
+    result = _guard(
+        lambda: _brain().push(reference=ref, tag=tag, local=local, anonymous=anonymous)
+    )
+    lock = {"reference": ref, "tag": tag, "digest": _extract_digest(result.data)}
+    config.lock_path().write_text(json.dumps(lock, indent=2) + "\n", encoding="utf-8")
+    typer.echo(f"wrote {config.LOCK_FILE}: {lock['reference']}:{lock['tag']}", err=True)
+    _emit(result)
+
+
+@app.command("pull")
+def pull(
+    tag: Annotated[str | None, typer.Option(help="Tag to pull. Default: brain.lock.")] = None,
+    reference: Annotated[
+        str | None, typer.Option(help="host/namespace/repo. Default: brain.lock or configured.")
+    ] = None,
+    local: Annotated[
+        str | None, typer.Option(help="Pull from a filesystem OCI registry dir.")
+    ] = None,
+    anonymous: Annotated[bool, typer.Option("--anonymous")] = False,
+    verify: Annotated[bool, typer.Option("--verify/--no-verify")] = True,
+) -> None:
+    """Install the brain from the registry (pinned by brain.lock) and verify it."""
+    lock: dict[str, Any] = {}
+    if config.lock_path().exists():
+        lock = json.loads(config.lock_path().read_text(encoding="utf-8"))
+    ref = reference or lock.get("reference") or config.registry_reference()
+    tg = tag or lock.get("tag")
+    b = _brain()
+    _guard(lambda: b.init())  # dist pull installs into an existing brain; create if absent
+    result = _guard(
+        lambda: b.pull(reference=ref, tag=tg, local=local, anonymous=anonymous)
+    )
+    if verify:
+        v = _guard(lambda: _brain().verify())
+        verified = (v.data or {}).get("verified") if isinstance(v.data, dict) else None
+        typer.echo(f"brain verify: verified={verified}", err=True)
+    _emit(result)

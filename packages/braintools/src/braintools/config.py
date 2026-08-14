@@ -15,6 +15,17 @@ DEFAULT_BRAIN_DIR = "brain"
 VITRUVIO_BIN_ENV = "BRAINTOOLS_VITRUVIO_BIN"
 DEFAULT_VITRUVIO_BIN = "vitruvio"
 
+# OCI registry the brain publishes to / pulls from (shared config).
+REGISTRY_ENV = "BRAINTOOLS_REGISTRY"
+DEFAULT_REGISTRY = "ghcr.io/alquimia-ai/red-teaming-brain"
+
+# Where `braintools seed` reads the canonical source documents from.
+SOURCES_DIR_ENV = "BRAINTOOLS_SOURCES_DIR"
+DEFAULT_SOURCES_DIR = "packages/braintools/docs/sources/roastme"
+
+# The committed pin (reference + tag + digest) so collaborators pull one version.
+LOCK_FILE = "brain.lock"
+
 
 def brain_dir() -> Path:
     """Absolute path to the brain directory."""
@@ -24,3 +35,15 @@ def brain_dir() -> Path:
 def vitruvio_bin() -> str:
     """Name or path of the vitruvio executable."""
     return os.environ.get(VITRUVIO_BIN_ENV, DEFAULT_VITRUVIO_BIN)
+
+
+def registry_reference() -> str:
+    return os.environ.get(REGISTRY_ENV, DEFAULT_REGISTRY)
+
+
+def sources_dir() -> Path:
+    return Path(os.environ.get(SOURCES_DIR_ENV, DEFAULT_SOURCES_DIR)).resolve()
+
+
+def lock_path() -> Path:
+    return Path(LOCK_FILE).resolve()

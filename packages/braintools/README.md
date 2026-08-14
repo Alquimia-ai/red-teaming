@@ -18,4 +18,24 @@ uv run braintools browse
 uv run braintools ingest-findings ./data/findings.json
 ```
 
-Config via env: `BRAINTOOLS_BRAIN_DIR` (default `./brain`), `BRAINTOOLS_VITRUVIO_BIN`.
+## Distributing the brain
+
+The brain is data, not code — it is never committed to git. Two ways to share it:
+
+```bash
+# 1) rebuild from committed sources (deterministic, offline; needs pandoc for .tex)
+uv run braintools seed
+
+# 2) OCI registry (ghcr.io) — publish once, pull read-only
+vitruvio registry login ghcr.io      # curator: GitHub PAT with write:packages
+uv run braintools publish v1         # dist push + writes brain.lock (the committed pin)
+uv run braintools pull               # collaborator: reads brain.lock, installs, verifies
+
+# test the loop offline with a filesystem registry (no network/creds):
+uv run braintools publish v1 --local /tmp/reg
+uv run braintools pull --local /tmp/reg
+```
+
+Config via env: `BRAINTOOLS_BRAIN_DIR` (default `./brain`), `BRAINTOOLS_VITRUVIO_BIN`,
+`BRAINTOOLS_REGISTRY` (default `ghcr.io/alquimia-ai/red-teaming-brain`),
+`BRAINTOOLS_SOURCES_DIR` (default `packages/braintools/docs/sources/roastme`).

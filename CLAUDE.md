@@ -103,6 +103,9 @@ uv run braintools index
 uv run braintools search "refund policy" -n 5
 uv run braintools browse
 uv run braintools ingest-findings ./data/findings.json       # the boundary, brain side
+uv run braintools seed                                       # rebuild brain from sources
+uv run braintools publish v1                                 # dist push + write brain.lock
+uv run braintools pull                                       # install pinned brain + verify
 ```
 
 Env: `BRAINTOOLS_BRAIN_DIR` (default `./brain`, → vitruvio's `--brain`),
@@ -113,6 +116,45 @@ Every data command runs vitruvio with `--json` and parses its **envelope**
 envelope (`ok: false`) while exiting 0, so success is decided by `ok`, not the exit
 code: on `ok: false` the wrapper raises with `code: message` + `hint`; on success it
 emits `data` and echoes `warnings` to stderr.
+
+## Distributing the brain (collaborators)
+
+The brain is **data, not code** — never commit `./brain/` to git (5 MB of binary
+content-addressed blobs + rebuildable indices; a Merkle DAG that git cannot 3-way
+merge). It is distributed two complementary ways ("hybrid"):
+
+1. **Reproducible from source** — the canonical documents live in
+   `packages/braintools/docs/sources/roastme/` (committed). Rebuild the whole brain
+   deterministically, offline, no registry:
+   ```bash
+   uv run braintools seed        # ingest every source (LaTeX via pandoc) + build indices
+   ```
+   Requires `pandoc` for `.tex` sources. Deterministic because it uses the `structure`
+   proposer; a model proposer would not be.
+
+2. **OCI registry (ghcr.io)** — publish once, pull read-only. The brain already is an
+   OCI layout, so this is native:
+   ```bash
+   # curator (needs a GitHub PAT with write:packages):
+   vitruvio registry login ghcr.io          # username + PAT
+   uv run braintools publish v1             # dist push + writes brain.lock
+
+   # collaborator (read:packages, or public):
+   uv run braintools pull                   # reads brain.lock, installs, verifies
+   ```
+   `registry.reference` defaults to `ghcr.io/alquimia-ai/red-teaming-brain`
+   (`braintools.config.DEFAULT_REGISTRY`, override with `$BRAINTOOLS_REGISTRY`).
+
+**`brain.lock`** (committed, at repo root) is the pin: `{reference, tag, digest}`.
+`publish` writes it; `pull` with no args reads it so everyone installs the exact same
+verified version. It appears after the first real publish.
+
+Credentials never touch the repo — they live in vitruvio's credential store
+(`vitruvio registry login`) or the environment. `vitruvio.toml` stays gitignored (local
+state); the registry reference is carried by braintools' default instead.
+
+Test the whole loop offline with a filesystem registry (no network/creds):
+`braintools publish v1 --local /tmp/reg` then `braintools pull --local /tmp/reg`.
 
 ## Layout
 

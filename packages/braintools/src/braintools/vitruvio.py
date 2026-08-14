@@ -212,3 +212,50 @@ class Vitruvio:
         if memory_type:
             args += ["--memory-type", memory_type]
         return self.run_interactive(args)
+
+    def verify(self) -> Result:
+        """Recompute every module's Merkle root and compare (brain verify)."""
+        return self.run(["brain", "verify", *self._brain_args()])
+
+    def config_set(self, key: str, value: str) -> Result:
+        return self.run(["config", "set", *self._brain_args(), key, value])
+
+    # -- distribution (OCI registry) -----------------------------------------
+
+    def push(
+        self,
+        *,
+        reference: str | None = None,
+        tag: str | None = None,
+        local: str | None = None,
+        anonymous: bool = False,
+    ) -> Result:
+        args = ["dist", "push", *self._brain_args()]
+        if reference:
+            args += ["--reference", reference]
+        if tag:
+            args += ["--tag", tag]
+        if local:
+            args += ["--local", local]
+        if anonymous:
+            args.append("--anonymous")
+        return self.run(args)
+
+    def pull(
+        self,
+        *,
+        reference: str | None = None,
+        tag: str | None = None,
+        local: str | None = None,
+        anonymous: bool = False,
+    ) -> Result:
+        args = ["dist", "pull", *self._brain_args()]
+        if reference:
+            args += ["--reference", reference]
+        if tag:
+            args += ["--tag", tag]
+        if local:
+            args += ["--local", local]
+        if anonymous:
+            args.append("--anonymous")
+        return self.run(args)
