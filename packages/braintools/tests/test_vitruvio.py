@@ -160,3 +160,20 @@ def test_extract_digest_reads_common_shapes():
     assert _extract_digest({"snapshot": {"digest": "sha256:def"}}) == "sha256:def"
     assert _extract_digest({"nothing": 1}) is None
     assert _extract_digest("not a dict") is None
+
+
+def test_subject_for_derives_from_immediate_subdir():
+    from braintools.cli import _subject_for
+
+    root = Path("/repo/docs/sources")
+    assert _subject_for(root / "roastme" / "spec.md", root, "misc") == "roastme"
+    assert _subject_for(root / "sparring" / "2026-08-14-leo-x.md", root, "misc") == "sparring"
+    assert _subject_for(root / "loose.md", root, "misc") == "misc"  # no subdir -> default
+
+
+def test_slugify_is_filesystem_safe():
+    from braintools.cli import _slugify
+
+    assert _slugify("Prompt Injection via Tool Args!") == "prompt-injection-via-tool-args"
+    assert _slugify("  spaces  &  symbols  ") == "spaces-symbols"
+    assert _slugify("") == "untitled"

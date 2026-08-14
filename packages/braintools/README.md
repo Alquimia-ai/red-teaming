@@ -18,6 +18,19 @@ uv run braintools browse
 uv run braintools ingest-findings ./data/findings.json
 ```
 
+## Capturing sparring as source
+
+Interactive sparring / findings become reproducible, git-shared knowledge when written
+as source docs under `docs/sources/sparring/` (subject `sparring`):
+
+```bash
+uv run braintools spar "prompt injection via tool args" --author leo --target alquimia-core
+# fill in the scaffolded YYYY-MM-DD-<author>-<slug>.md, then commit and:
+uv run braintools seed        # ingests docs/sources/*; each subdir is a subject
+```
+
+See `docs/sources/sparring/README.md` for the convention.
+
 ## Distributing the brain
 
 The brain is data, not code — it is never committed to git. Two ways to share it:

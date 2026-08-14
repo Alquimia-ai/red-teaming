@@ -19,9 +19,10 @@ DEFAULT_VITRUVIO_BIN = "vitruvio"
 REGISTRY_ENV = "BRAINTOOLS_REGISTRY"
 DEFAULT_REGISTRY = "ghcr.io/alquimia-ai/red-teaming-brain"
 
-# Where `braintools seed` reads the canonical source documents from.
+# Where `braintools seed` reads source documents from. Each immediate subdirectory is a
+# subject: docs/sources/roastme/* -> subject "roastme", docs/sources/sparring/* -> "sparring".
 SOURCES_DIR_ENV = "BRAINTOOLS_SOURCES_DIR"
-DEFAULT_SOURCES_DIR = "packages/braintools/docs/sources/roastme"
+DEFAULT_SOURCES_DIR = "packages/braintools/docs/sources"
 
 # The committed pin (reference + tag + digest) so collaborators pull one version.
 LOCK_FILE = "brain.lock"

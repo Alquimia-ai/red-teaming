@@ -103,7 +103,8 @@ uv run braintools index
 uv run braintools search "refund policy" -n 5
 uv run braintools browse
 uv run braintools ingest-findings ./data/findings.json       # the boundary, brain side
-uv run braintools seed                                       # rebuild brain from sources
+uv run braintools spar "<title>" --author leo               # scaffold a sparring source doc
+uv run braintools seed                                       # rebuild brain from docs/sources/*
 uv run braintools publish v1                                 # dist push + write brain.lock
 uv run braintools pull                                       # install pinned brain + verify
 ```
@@ -123,14 +124,27 @@ The brain is **data, not code** — never commit `./brain/` to git (5 MB of bina
 content-addressed blobs + rebuildable indices; a Merkle DAG that git cannot 3-way
 merge). It is distributed two complementary ways ("hybrid"):
 
-1. **Reproducible from source** — the canonical documents live in
-   `packages/braintools/docs/sources/roastme/` (committed). Rebuild the whole brain
-   deterministically, offline, no registry:
+1. **Reproducible from source** — committed documents under `docs/sources/`, one
+   subdirectory per subject (`roastme/` = curated corpus, `sparring/` = findings).
+   Rebuild the whole brain deterministically, offline, no registry:
    ```bash
    uv run braintools seed        # ingest every source (LaTeX via pandoc) + build indices
    ```
-   Requires `pandoc` for `.tex` sources. Deterministic because it uses the `structure`
-   proposer; a model proposer would not be.
+   Each block is tagged with its subdirectory's name as subject. Requires `pandoc` for
+   `.tex`. Deterministic because it uses the `structure` proposer (a model proposer is
+   not); note that seed reproduces the *knowledge* (canonical/semantic roots match across
+   collaborators) but each run stamps its own provenance.
+
+   **Capturing sparring as source.** Interactive sparring / red-teaming findings become
+   reproducible, git-shared knowledge only if written as source docs. Convention:
+   ```bash
+   uv run braintools spar "prompt injection via tool args" --author leo --target alquimia-core
+   # fill in the scaffolded docs/sources/sparring/YYYY-MM-DD-<author>-<slug>.md, then:
+   git add docs/sources/sparring/ && git commit && git push
+   uv run braintools seed        # ingests it under subject "sparring"
+   ```
+   Use this (seed path) for document-shaped, deterministic knowledge. Non-deterministic
+   or model-extracted operational knowledge belongs in the registry path instead.
 
 2. **OCI registry (ghcr.io)** — publish once, pull read-only. The brain already is an
    OCI layout, so this is native:

@@ -193,6 +193,7 @@ class Vitruvio:
         *,
         limit: int | None = None,
         memory_types: Sequence[str] | None = None,
+        subject: str | None = None,
         mode: str | None = None,
         content: bool = False,
     ) -> Result:
@@ -201,6 +202,8 @@ class Vitruvio:
             args += ["--limit", str(limit)]
         for mt in memory_types or []:
             args += ["--memory-type", mt]
+        if subject:
+            args += ["--subject", subject]
         if mode:
             args += ["--mode", mode]
         if content:

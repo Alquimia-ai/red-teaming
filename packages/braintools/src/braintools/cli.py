@@ -8,7 +8,10 @@ never prose. Failures and warnings are surfaced on stderr.
 
 from __future__ import annotations
 
+import datetime
 import json
+import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -110,6 +113,9 @@ def search(
         list[str] | None,
         typer.Option("--memory-type", "-m", help="Restrict to these modules. Repeatable."),
     ] = None,
+    subject: Annotated[
+        str | None, typer.Option(help="Restrict to one subject, e.g. roastme or sparring.")
+    ] = None,
     mode: Annotated[
         str | None, typer.Option(help="auto, exact, lexical, semantic or associative.")
     ] = None,
@@ -121,7 +127,8 @@ def search(
     _emit(
         _guard(
             lambda: _brain().search(
-                text, limit=limit, memory_types=memory_type, mode=mode, content=content
+                text, limit=limit, memory_types=memory_type,
+                subject=subject, mode=mode, content=content,
             )
         )
     )
@@ -165,6 +172,19 @@ def ingest_findings(
 # -- reproducible seed from source ---------------------------------------------
 
 _MARKDOWN_EXTS = {".md", ".markdown"}
+# Names skipped by seed: docs about the convention, not knowledge for the brain.
+_SEED_SKIP_NAMES = {"readme.md", "template.md"}
+
+
+def _subject_for(path: Path, root: Path, default: str) -> str:
+    """Subject = the immediate subdirectory under the sources root, else the default."""
+    rel = path.relative_to(root)
+    return rel.parts[0] if len(rel.parts) > 1 else default
+
+
+def _slugify(text: str) -> str:
+    """A filesystem- and URL-safe slug: lowercase, alphanumerics joined by hyphens."""
+    return re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")[:60] or "untitled"
 
 
 def _tex_to_markdown(tex: Path, out_dir: Path) -> Path:
@@ -193,16 +213,19 @@ def _tex_to_markdown(tex: Path, out_dir: Path) -> Path:
 def seed(
     sources: Annotated[
         Path | None,
-        typer.Option(help="Directory of source documents. Default: $BRAINTOOLS_SOURCES_DIR."),
+        typer.Option(help="Sources root. Default: $BRAINTOOLS_SOURCES_DIR."),
     ] = None,
-    subject: Annotated[str, typer.Option(help="Subject to tag every source under.")] = "roastme",
+    default_subject: Annotated[
+        str, typer.Option("--default-subject", help="Subject for files not in a subdir.")
+    ] = "misc",
     actor: Annotated[str | None, typer.Option()] = None,
     actor_kind: Annotated[str | None, typer.Option()] = None,
 ) -> None:
     """Rebuild the brain deterministically from committed source documents.
 
-    Ingests every file under the sources directory (Markdown directly; LaTeX via a
-    pandoc conversion, with --origin pointing at the .tex), then builds the indices.
+    Ingests every file under the sources root (Markdown directly; LaTeX via a pandoc
+    conversion, with --origin pointing at the .tex), then builds the indices. Each block
+    is tagged with the subject of its subdirectory (docs/sources/sparring/* -> "sparring").
     Idempotent: identical content dedupes to the same content-addressed blocks.
     """
     src = sources or config.sources_dir()
@@ -219,24 +242,80 @@ def seed(
         tmp = Path(td)
         for f in files:
             ext = f.suffix.lower()
+            if f.name.lower() in _SEED_SKIP_NAMES or f.name.startswith("."):
+                continue
+            subj = _subject_for(f, src, default_subject)
             if ext in _MARKDOWN_EXTS:
-                res = _guard(lambda f=f: b.ingest(f, subject=subject))
+                res = _guard(lambda f=f, s=subj: b.ingest(f, subject=s))
             elif ext == ".tex":
                 md = _tex_to_markdown(f, tmp)
                 res = _guard(
-                    lambda md=md, f=f: b.ingest(
-                        md, media_type="text/markdown", subject=subject, origin=str(f)
+                    lambda md=md, f=f, s=subj: b.ingest(
+                        md, media_type="text/markdown", subject=s, origin=str(f)
                     )
                 )
             else:
                 ingested.append({"file": f.name, "skipped": "unsupported extension"})
                 continue
             proposed = (res.data or {}).get("proposed") if isinstance(res.data, dict) else None
-            ingested.append({"file": f.name, "proposed": proposed})
+            ingested.append({"file": f.name, "subject": subj, "proposed": proposed})
 
     index_res = _guard(lambda: b.index())
     _emit(Result(data={"sources": str(src), "ingested": ingested, "indexed": True},
                  warnings=index_res.warnings))
+
+
+# -- sparring capture ----------------------------------------------------------
+
+_SPARRING_TEMPLATE = """\
+# {title}
+
+- Date: {date}
+- Author: {author}
+- Target: {target}
+- Context: {context}
+
+## What we tried
+
+
+## What happened
+
+
+## Takeaway
+
+"""
+
+
+@app.command("spar")
+def spar(
+    title: Annotated[str, typer.Argument(help="Title of the finding/insight.")],
+    author: Annotated[str | None, typer.Option(help="Defaults to $USER.")] = None,
+    target: Annotated[str, typer.Option(help="Agent/model under test, or N/A.")] = "N/A",
+    context: Annotated[str, typer.Option(help="One-line context.")] = "",
+) -> None:
+    """Scaffold a sparring source document under docs/sources/sparring/.
+
+    Creates a dated, structured Markdown file for `seed` to ingest (subject "sparring").
+    Fill it in, commit it, then `braintools seed`. This is how interactive sparring
+    becomes reproducible, git-shared knowledge.
+    """
+    author = author or os.environ.get("USER") or "unknown"
+    date = datetime.date.today().isoformat()
+    name = f"{date}-{_slugify(author)}-{_slugify(title)}.md"
+    spar_dir = config.sources_dir() / "sparring"
+    spar_dir.mkdir(parents=True, exist_ok=True)
+    path = spar_dir / name
+    if path.exists():
+        typer.echo(f"already exists: {path}", err=True)
+        raise typer.Exit(code=1)
+    path.write_text(
+        _SPARRING_TEMPLATE.format(
+            title=title, date=date, author=author, target=target, context=context
+        ),
+        encoding="utf-8",
+    )
+    typer.echo(f"created {path}", err=True)
+    typer.echo(str(path))  # stdout: the path, so it is scriptable / openable
 
 
 # -- distribution (OCI registry) -----------------------------------------------
