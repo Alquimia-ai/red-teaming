@@ -12,6 +12,8 @@ immutable: once accepted they are not rewritten in place; they are superseded by
 | [003](003-append-only-store-and-content-identity.md) | Append-only store and content-derived identity | ✅ Accepted | store, contracts, evidence |
 | [004](004-models-are-configuration-and-one-governed-door-to-the-target.md) | Models are configuration and one governed door to the target | ✅ Accepted | judges, target, knowledge, provenance |
 | [005](005-catalogue-bundles-name-constructions-the-runtime-builds.md) | Catalogue bundles name constructions the runtime builds | ✅ Accepted | catalogue, probes, contracts |
+| [006](006-strategies-say-what-deliveries-say-how.md) | Strategies declare what a probe says and deliveries declare how it reaches the target | ✅ Accepted | engine, catalogue, contracts, evidence |
+| [007](007-control-signal-as-control-artifacts-and-typed-transport-failures.md) | Control signal persists as control artifacts and transport failures never close a unit | ✅ Accepted | engine, store, contracts, evidence |
 
 **Status legend:** ✅ Accepted · 📝 Proposed · 🚫 Deprecated · ↩️ Superseded by ADR-NNN
 

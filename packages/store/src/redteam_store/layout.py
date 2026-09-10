@@ -254,6 +254,17 @@ def exploit(run_id: str) -> str:
     return f"{run_prefix(run_id)}/exploit.json"
 
 
+def searched(run_id: str) -> str:
+    """What the search reported about itself, written the moment it closes -- ran or failed.
+
+    The report is `exploit`, and a search that failed leaves none; but it, too, sent generated
+    queries at the assistant, so a resumed attempt must not search again either way. This marker is
+    what says "the search was attempted", with what it said about itself, and it is read before an
+    exploiter is built.
+    """
+    return f"{run_prefix(run_id)}/searched.json"
+
+
 SESSIONS: Final = "sessions"
 
 
