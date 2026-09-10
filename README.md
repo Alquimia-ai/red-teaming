@@ -1,52 +1,32 @@
-# Alquimia Red Teaming
+# red-teaming
 
-Verifiable adversarial testing of Alquimia agents. Probe deployed agents as black
-boxes, and store what breaks them as **evidence** in a Boltzmann brain — reproducible,
-with provenance, not prose.
+Red teaming for Alquimia assistants.
 
-See [`CLAUDE.md`](./CLAUDE.md) for the full architecture.
+Generate adversarial probes anchored in a knowledge base, conduct governed multi-turn
+conversations against a live assistant, keep every conversation as immutable evidence, and
+deliver the attack dataset, the weakness profile, the exploitation report and a manifest with
+honest coverage: what was planned, what closed, what failed.
 
-## Two packages (uv workspace)
-
-They **never import each other**; they meet only at a data boundary (knowledge in,
-findings out).
-
-| Package | What | Deployed? |
-|---------|------|-----------|
-| [`packages/redteam`](./packages/redteam) | The red-teaming **app**. Probes agents, emits findings. Knows nothing about the brain. | Yes — ships to k8s / OpenShift / Railway |
-| [`packages/braintools`](./packages/braintools) | Brain-curation CLI (wraps [vitruvio](https://github.com/getsfumato/vitruvio)). | No — local/pipeline tool |
+## Repository
 
 ```
-brain ──(braintools export)──▶ knowledge.json ──▶ redteam app ──▶ findings.json ──(braintools ingest-findings)──▶ brain
+apps/            api · runner · cli
+packages/        redteam_<name> libraries
+deploy/          compose · charts · catalog · cloud · appliance
+docs/            adr · architecture · components · deploy
+tests/guards/    architectural guards
 ```
 
-## Setup
-
-```bash
-uv sync                 # both packages
-uv sync --extra roast   # + RoastMe pipeline (heavy)
-
-# vitruvio (used by braintools only; not on PyPI):
-curl -fsSL https://raw.githubusercontent.com/getsfumato/vitruvio/main/install.sh | sh
-```
-
-## Usage
-
-```bash
-# app
-uv run redteam check --knowledge ./data/knowledge.json
-uv run redteam roast                                       # [roadmap]
-
-# brain curation
-uv run braintools init --actor curator --actor-kind human
-uv run braintools ingest ./policy.pdf
-uv run braintools search "refund policy" -n 5
-uv run braintools ingest-findings ./data/findings.json
-```
+The repository is being built in phases; see [`CLAUDE.md`](CLAUDE.md) for the current state, the
+invariants and the vocabulary, and [`docs/adr/`](docs/adr/) for the decisions.
 
 ## Develop
 
 ```bash
-uv run pytest
-uv run ruff check .
+uv sync --all-packages
+uv run pytest -q -m "not live and not docker and not k8s"
+uv run ruff check . && uv run mypy packages apps tests
 ```
+
+Contribution rules -- branches, commit scopes, releases -- are in
+[`CONTRIBUTING.md`](CONTRIBUTING.md).
