@@ -1,0 +1,31 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/redteam_probes"]
+
+[tool.hatch.build.targets.wheel.sources]
+"src" = ""
+
+[project]
+name = "red-teaming-probes"
+version = "0.1.0"
+description = "Probe generation for one run: pull the knowledge base, build the probes the catalogue names, store the set by content."
+requires-python = ">=3.12,<3.14"
+dependencies = [
+    "red-teaming-contracts",
+    "red-teaming-store",
+    "red-teaming-catalogue",
+    "red-teaming-knowledge",
+    "red-teaming-judges",
+    "gaussia>=1.2.0",
+    "pydantic>=2.9",
+]
+
+[tool.uv.sources]
+red-teaming-contracts = { workspace = true }
+red-teaming-store = { workspace = true }
+red-teaming-catalogue = { workspace = true }
+red-teaming-knowledge = { workspace = true }
+red-teaming-judges = { workspace = true }

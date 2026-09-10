@@ -4,9 +4,11 @@ requires-python = ">=3.12, <3.14"
 
 [manifest]
 members = [
+    "red-teaming-catalogue",
     "red-teaming-contracts",
     "red-teaming-judges",
     "red-teaming-knowledge",
+    "red-teaming-probes",
     "red-teaming-secrets",
     "red-teaming-settings",
     "red-teaming-store",
@@ -1317,6 +1319,29 @@ wheels = [
 ]
 
 [[package]]
+name = "red-teaming-catalogue"
+version = "0.1.0"
+source = { editable = "packages/catalogue" }
+dependencies = [
+    { name = "gaussia" },
+    { name = "langchain-core" },
+    { name = "pydantic" },
+    { name = "pyyaml" },
+    { name = "red-teaming-contracts" },
+    { name = "red-teaming-store" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "gaussia", specifier = ">=1.2.0" },
+    { name = "langchain-core", specifier = ">=0.3" },
+    { name = "pydantic", specifier = ">=2.9" },
+    { name = "pyyaml", specifier = ">=6.0" },
+    { name = "red-teaming-contracts", editable = "packages/contracts" },
+    { name = "red-teaming-store", editable = "packages/store" },
+]
+
+[[package]]
 name = "red-teaming-contracts"
 version = "0.1.0"
 source = { editable = "packages/contracts" }
@@ -1376,6 +1401,31 @@ dependencies = [
 requires-dist = [
     { name = "pyboltzmann", extras = ["oci"], specifier = ">=0.9.1" },
     { name = "red-teaming-contracts", editable = "packages/contracts" },
+]
+
+[[package]]
+name = "red-teaming-probes"
+version = "0.1.0"
+source = { editable = "packages/probes" }
+dependencies = [
+    { name = "gaussia" },
+    { name = "pydantic" },
+    { name = "red-teaming-catalogue" },
+    { name = "red-teaming-contracts" },
+    { name = "red-teaming-judges" },
+    { name = "red-teaming-knowledge" },
+    { name = "red-teaming-store" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "gaussia", specifier = ">=1.2.0" },
+    { name = "pydantic", specifier = ">=2.9" },
+    { name = "red-teaming-catalogue", editable = "packages/catalogue" },
+    { name = "red-teaming-contracts", editable = "packages/contracts" },
+    { name = "red-teaming-judges", editable = "packages/judges" },
+    { name = "red-teaming-knowledge", editable = "packages/knowledge" },
+    { name = "red-teaming-store", editable = "packages/store" },
 ]
 
 [[package]]

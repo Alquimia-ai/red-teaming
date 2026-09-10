@@ -69,6 +69,22 @@ class ContractSpec:
         return next((p for p in self.principles if p.id == identifier), None)
 
 
+def as_raw(spec: ContractSpec) -> dict[str, Any]:
+    """The declaration as data again: what is encoded into the store's sidecar.
+
+    From the parsed spec rather than from the author's bytes, so two files that declare the same
+    contract -- one in YAML, one in JSON, one with a rubric wrapped differently -- land as the same
+    bytes and answer with the same digest.
+    """
+    return {
+        "version": spec.version,
+        "verdict": {"positive": list(spec.positive_tokens), "negative": list(spec.negative_tokens)},
+        "principles": [
+            {"id": p.id, "weight": p.weight, "rubric": p.rubric} for p in spec.principles
+        ],
+    }
+
+
 def load_contract_spec(path: Path) -> ContractSpec:
     """The contract in a file. For a fixture or a seed; a run reads its own from the store."""
     return parse_contract_spec(path.read_text())

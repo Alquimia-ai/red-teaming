@@ -17,6 +17,8 @@ red-teaming-store = { workspace = true }
 red-teaming-judges = { workspace = true }
 red-teaming-knowledge = { workspace = true }
 red-teaming-target = { workspace = true }
+red-teaming-catalogue = { workspace = true }
+red-teaming-probes = { workspace = true }
 
 [dependency-groups]
 dev = [
