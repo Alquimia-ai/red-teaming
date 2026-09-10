@@ -164,11 +164,21 @@ def test_the_brain_registry_credential_travels_when_the_deployment_names_one(
         lambda: load().model_copy(update={"brain_registry_secret_ref": "REGISTRY_CREDS"}),
     )
 
-    response = client.post("/runs", json=_spec("run-registry"))
+    brainless = client.post("/runs", json=_spec("run-no-brain"))
+    grounded = client.post(
+        "/runs",
+        json=_spec(
+            "run-registry",
+            kb_ref={"registry": "ghcr.io", "repository": "acme/kb", "digest": "sha256:" + "b" * 64},
+            attackers={},
+        ),
+    )
 
-    assert response.status_code == 202, response.text
-    [(_, refs)] = dispatcher.launched
-    assert refs == ("TARGET_KEY", "REGISTRY_CREDS")
+    assert brainless.status_code == 202 and grounded.status_code == 202, grounded.text
+    assert dispatcher.launched == [
+        ("run-no-brain", ("TARGET_KEY",)),
+        ("run-registry", ("TARGET_KEY", "REGISTRY_CREDS")),
+    ], "a run with no brain pulls nothing and carries no registry credential"
 
 
 def test_a_secret_nothing_can_resolve_is_refused_before_the_spec_is_frozen(
@@ -440,6 +450,13 @@ def test_the_status_reads_the_store_and_the_platform_and_a_stalled_run_can_be_re
     assert client.get("/runs/run-status").json()["phase"] == "complete"
     assert client.get("/runs/run-status/result").json() == {"phase": "complete"}
     assert client.post("/runs/run-status:resume").status_code == 409, "closed runs are not resumed"
+
+
+def test_the_runs_a_deployment_accepted_are_listed_by_id(client: TestClient) -> None:
+    assert client.get("/runs").json() == {"runs": []}
+    assert client.post("/runs", json=_spec("run-b")).status_code == 202
+    assert client.post("/runs", json=_spec("run-a")).status_code == 202
+    assert client.get("/runs").json() == {"runs": ["run-a", "run-b"]}
 
 
 def test_an_unknown_run_is_a_404_everywhere(client: TestClient) -> None:
