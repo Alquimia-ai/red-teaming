@@ -14,6 +14,9 @@ red-teaming-contracts = { workspace = true }
 red-teaming-settings = { workspace = true }
 red-teaming-secrets = { workspace = true }
 red-teaming-store = { workspace = true }
+red-teaming-judges = { workspace = true }
+red-teaming-knowledge = { workspace = true }
+red-teaming-target = { workspace = true }
 
 [dependency-groups]
 dev = [
@@ -23,6 +26,9 @@ dev = [
     "pytest-env>=1.1",
     "ruff>=0.8",
     "mypy>=1.13",
+    # the provider libraries the judges tests build real clients with
+    "langchain-openrouter>=0.1.0",
+    "langchain-openai>=0.3",
 ]
 
 # ---------------------------------------------------------------------------
