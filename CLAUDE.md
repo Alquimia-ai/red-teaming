@@ -8,9 +8,11 @@ and a manifest that says exactly what was planned, what closed and what failed.
 ## Status
 
 The repository is being built in phases, one pull request each. Landed so far: the foundations
-(workspace, conventions, CI, guards, skills) and the IO-free core -- `contracts`, `settings`,
-`secrets`, `store`. Models, knowledge, target, catalogue, probes, engine and the apps land next.
-Keep this file honest: describe what exists, mark what is planned.
+(workspace, conventions, CI, guards, skills), the IO-free core -- `contracts`, `settings`,
+`secrets`, `store` -- and the model-facing packages -- `judges` (providers `openrouter` and
+`openai_compatible`, the logprob grader), `knowledge` (read-only brain client) and `target` (the
+Alquimia runtime adapter and replay). Catalogue, probes, engine and the apps land next. Keep this
+file honest: describe what exists, mark what is planned.
 
 ## Repository structure
 
@@ -121,10 +123,13 @@ Use these words, in this sense, everywhere -- code, docs, commits:
 | `tests/guards/test_scopes.py` | Every workspace member has a commit scope |
 | `tests/guards/test_isolation.py` | The import graph above; `pyboltzmann` is imported only by `knowledge` |
 | `tests/guards/test_no_delete.py` | The store interface has no `delete` and nothing calls one |
+| `tests/guards/test_no_hardcoded_models.py` | No model id or provider URL is bound in code; models arrive in the spec |
+| `tests/guards/test_no_ambient_credentials.py` | The model-facing surface never reads the process environment |
+| `tests/guards/test_no_status_literals.py` | No HTTP status is compared to a number; failures are classified by name |
 | `packages/contracts/tests/test_plan_determinism.py` | Work-unit keys derive from the plan alone, across processes |
 
-Guards for Dockerfile rendering, release closures, hardcoded models, ambient credentials, status
-literals and inference-only search arrive with the packages they protect.
+Guards for Dockerfile rendering, release closures and inference-only search arrive with the packages
+they protect.
 
 ## Skills
 
