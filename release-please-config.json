@@ -1,0 +1,65 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "include-component-in-tag": true,
+  "tag-separator": "-",
+  "separate-pull-requests": true,
+  "bump-minor-pre-major": true,
+  "bump-patch-for-minor-pre-major": false,
+  "changelog-sections": [
+    { "type": "feat", "section": "Features" },
+    { "type": "fix", "section": "Bug Fixes" },
+    { "type": "perf", "section": "Performance Improvements" },
+    { "type": "refactor", "section": "Code Refactoring" },
+    { "type": "build", "section": "Build", "hidden": true },
+    { "type": "docs", "section": "Documentation", "hidden": true },
+    { "type": "chore", "section": "Miscellaneous", "hidden": true },
+    { "type": "ci", "section": "CI/CD", "hidden": true },
+    { "type": "test", "section": "Tests", "hidden": true }
+  ],
+  "packages": {
+    "apps/api": {
+      "release-type": "python",
+      "component": "api",
+      "include-paths": [
+        "apps/api",
+        "packages/catalogue",
+        "packages/contracts",
+        "packages/dispatch",
+        "packages/secrets",
+        "packages/settings",
+        "packages/store",
+        "uv.lock"
+      ]
+    },
+    "apps/runner": {
+      "release-type": "python",
+      "component": "runner",
+      "include-paths": [
+        "apps/runner",
+        "packages/catalogue",
+        "packages/contracts",
+        "packages/delivery",
+        "packages/engine",
+        "packages/judges",
+        "packages/knowledge",
+        "packages/probes",
+        "packages/secrets",
+        "packages/settings",
+        "packages/store",
+        "packages/target",
+        "uv.lock"
+      ]
+    },
+    "apps/cli": {
+      "release-type": "python",
+      "component": "cli",
+      "include-paths": [
+        "apps/cli",
+        "deploy/compose",
+        "deploy/seed",
+        "packages/contracts",
+        "uv.lock"
+      ]
+    }
+  }
+}
