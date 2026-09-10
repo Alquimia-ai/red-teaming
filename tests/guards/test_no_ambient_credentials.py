@@ -24,6 +24,7 @@ SURFACE = (
     "packages/target/src",
     "packages/catalogue/src",
     "packages/probes/src",
+    "packages/engine/src",
 )
 
 ENVIRONMENT = frozenset({"environ", "environb", "getenv", "getenvb"})
