@@ -6,10 +6,13 @@ requires-python = ">=3.12, <3.14"
 members = [
     "red-teaming-catalogue",
     "red-teaming-contracts",
+    "red-teaming-delivery",
+    "red-teaming-dispatch",
     "red-teaming-engine",
     "red-teaming-judges",
     "red-teaming-knowledge",
     "red-teaming-probes",
+    "red-teaming-runner",
     "red-teaming-secrets",
     "red-teaming-settings",
     "red-teaming-store",
@@ -1358,6 +1361,36 @@ requires-dist = [
 ]
 
 [[package]]
+name = "red-teaming-delivery"
+version = "0.1.0"
+source = { editable = "packages/delivery" }
+dependencies = [
+    { name = "httpx" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "httpx", specifier = ">=0.28" }]
+
+[[package]]
+name = "red-teaming-dispatch"
+version = "0.1.0"
+source = { editable = "packages/dispatch" }
+dependencies = [
+    { name = "httpx" },
+    { name = "red-teaming-contracts" },
+    { name = "red-teaming-secrets" },
+    { name = "red-teaming-settings" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "httpx", specifier = ">=0.28" },
+    { name = "red-teaming-contracts", editable = "packages/contracts" },
+    { name = "red-teaming-secrets", editable = "packages/secrets" },
+    { name = "red-teaming-settings", editable = "packages/settings" },
+]
+
+[[package]]
 name = "red-teaming-engine"
 version = "0.1.0"
 source = { editable = "packages/engine" }
@@ -1454,6 +1487,41 @@ requires-dist = [
     { name = "red-teaming-judges", editable = "packages/judges" },
     { name = "red-teaming-knowledge", editable = "packages/knowledge" },
     { name = "red-teaming-store", editable = "packages/store" },
+]
+
+[[package]]
+name = "red-teaming-runner"
+version = "0.1.0"
+source = { editable = "apps/runner" }
+dependencies = [
+    { name = "red-teaming-catalogue" },
+    { name = "red-teaming-contracts" },
+    { name = "red-teaming-delivery" },
+    { name = "red-teaming-engine" },
+    { name = "red-teaming-judges", extra = ["openai-compatible", "openrouter"] },
+    { name = "red-teaming-knowledge" },
+    { name = "red-teaming-probes" },
+    { name = "red-teaming-secrets" },
+    { name = "red-teaming-settings" },
+    { name = "red-teaming-store" },
+    { name = "red-teaming-target" },
+    { name = "typer" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "red-teaming-catalogue", editable = "packages/catalogue" },
+    { name = "red-teaming-contracts", editable = "packages/contracts" },
+    { name = "red-teaming-delivery", editable = "packages/delivery" },
+    { name = "red-teaming-engine", editable = "packages/engine" },
+    { name = "red-teaming-judges", extras = ["openrouter", "openai-compatible"], editable = "packages/judges" },
+    { name = "red-teaming-knowledge", editable = "packages/knowledge" },
+    { name = "red-teaming-probes", editable = "packages/probes" },
+    { name = "red-teaming-secrets", editable = "packages/secrets" },
+    { name = "red-teaming-settings", editable = "packages/settings" },
+    { name = "red-teaming-store", editable = "packages/store" },
+    { name = "red-teaming-target", editable = "packages/target" },
+    { name = "typer", specifier = ">=0.15" },
 ]
 
 [[package]]

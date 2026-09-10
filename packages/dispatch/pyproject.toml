@@ -1,0 +1,26 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/redteam_dispatch"]
+
+[tool.hatch.build.targets.wheel.sources]
+"src" = ""
+
+[project]
+name = "red-teaming-dispatch"
+version = "0.1.0"
+description = "Launch one runner per run and ask the platform whether it is alive: docker, kubernetes Job, local subprocess."
+requires-python = ">=3.12,<3.14"
+dependencies = [
+    "red-teaming-contracts",
+    "red-teaming-settings",
+    "red-teaming-secrets",
+    "httpx>=0.28",
+]
+
+[tool.uv.sources]
+red-teaming-contracts = { workspace = true }
+red-teaming-settings = { workspace = true }
+red-teaming-secrets = { workspace = true }

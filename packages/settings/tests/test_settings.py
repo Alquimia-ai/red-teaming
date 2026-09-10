@@ -61,3 +61,28 @@ def test_variables_outside_the_prefix_are_ignored(monkeypatch: pytest.MonkeyPatc
     monkeypatch.setenv("STORE_BACKEND", "memory")
     monkeypatch.delenv("REDTEAM_STORE_BACKEND", raising=False)
     assert Settings().store_backend is StoreBackend.S3
+
+
+def test_the_kubernetes_backend_s_knobs_have_appliance_defaults(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    for name in (
+        "K8S_RUNNER_SECRET",
+        "K8S_RUNNER_CONFIG_MAP",
+        "K8S_SERVICE_ACCOUNT",
+        "K8S_JOB_BACKOFF_LIMIT",
+        "K8S_JOB_TTL_SECONDS",
+    ):
+        monkeypatch.delenv(f"REDTEAM_{name}", raising=False)
+
+    settings = Settings()
+
+    assert settings.k8s_runner_secret == "red-teaming-runner-secrets"
+    assert settings.k8s_runner_config_map is None and settings.k8s_service_account is None
+    assert settings.k8s_job_backoff_limit == 2
+    assert settings.k8s_job_ttl_seconds == 86400
+
+    monkeypatch.setenv("REDTEAM_K8S_JOB_BACKOFF_LIMIT", "5")
+    monkeypatch.setenv("REDTEAM_K8S_RUNNER_CONFIG_MAP", "runner-config")
+    tuned = load()
+    assert tuned.k8s_job_backoff_limit == 5 and tuned.k8s_runner_config_map == "runner-config"

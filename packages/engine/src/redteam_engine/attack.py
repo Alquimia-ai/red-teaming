@@ -97,6 +97,7 @@ def attack(
     resolver: SecretResolver,
     target: TargetAssistant | None = None,
     attackers: Mapping[str, AttackerProtocol] | None = None,
+    started_at: float | None = None,
 ) -> Attacked:
     """Conduct the attack, or find it already conducted.
 
@@ -110,6 +111,8 @@ def attack(
         target: An injected adapter -- a test's, or a rehearsal's. It still goes behind the same
             door: the seam is for substituting the transport, never for skipping the governance.
         attackers: Injected attackers, by id. Every id the plan names still has to be present.
+        started_at: When the attempt began, on the monotonic clock, so the wall-clock ceiling
+            counts generation too. `None` starts the clock here.
     """
     run_id = plan.run_id
     if store.exists(layout.dataset(run_id)):
@@ -121,6 +124,11 @@ def attack(
         max_target_calls=spec.budget.max_target_calls,
         max_wall_seconds=spec.budget.max_wall_seconds,
     )
+    if started_at is not None:
+        budget.started_at = started_at
+    # Generation already spent some of the run's wall clock; a run whose ceiling it exhausted stops
+    # here rather than after the first call to the assistant.
+    budget.charge_time()
     ledger = FailureLedger()
     # The recorder maps the k-th live exchange to the k-th unit the resuming target sends live, so
     # it is built over exactly that list -- every unit with no recorded answer, in plan order --

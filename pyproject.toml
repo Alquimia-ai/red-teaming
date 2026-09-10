@@ -20,6 +20,9 @@ red-teaming-target = { workspace = true }
 red-teaming-catalogue = { workspace = true }
 red-teaming-probes = { workspace = true }
 red-teaming-engine = { workspace = true }
+red-teaming-dispatch = { workspace = true }
+red-teaming-delivery = { workspace = true }
+red-teaming-runner = { workspace = true }
 
 [dependency-groups]
 dev = [
