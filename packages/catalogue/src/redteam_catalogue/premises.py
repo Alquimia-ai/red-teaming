@@ -118,6 +118,18 @@ def registered() -> tuple[str, ...]:
     return tuple(sorted(_BUILDERS))
 
 
+MODEL_DRIVEN: frozenset[str] = frozenset({CONTEXTUAL_SIBLING})
+"""The keys whose construction writes premises with the run's generator, and so needs the run's
+context and generator declared. Stated as data so the API's gate can refuse a run naming one of
+them with neither, before anything is frozen, without building a construction -- which would cost a
+request to the generator."""
+
+
+def needs_model(key: str) -> bool:
+    """Whether a construction key needs the run's generator and context to be built."""
+    return key in MODEL_DRIVEN
+
+
 def build_transforms(keys: Iterable[str], ingredients: Ingredients) -> tuple[Transform, ...]:
     """The constructions this catalogue asked for, configured for this run.
 
