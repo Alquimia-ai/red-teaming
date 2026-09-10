@@ -340,6 +340,13 @@ def attempt(run_id: str, attempt: str) -> str:
     return f"{attempts_prefix(run_id)}/{_checked('attempt', attempt)}.json"
 
 
+def parse_spec_key(key: str) -> str | None:
+    """The run id a frozen spec belongs to, or None if the key is not one. Listing `runs/` and
+    keeping these is how the runs a deployment accepted are enumerated without a table."""
+    match = re.fullmatch(rf"{RUNS}/([^/]+)/spec\.json", key)
+    return match.group(1) if match else None
+
+
 def parse_attempt_key(key: str) -> tuple[str, str] | None:
     """`(run_id, attempt)` for an attempt marker, or None if it is not one."""
     match = re.fullmatch(rf"{RUNS}/([^/]+)/{ATTEMPTS}/([^/]+)\.json", key)

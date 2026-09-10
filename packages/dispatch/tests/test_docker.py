@@ -120,6 +120,22 @@ def test_the_container_s_state_is_the_run_s_liveness(
     assert asked.url.path == "/containers/redteam-run-run-1/json"
 
 
+def test_a_daemon_this_process_cannot_reach_is_a_dispatch_error_at_launch() -> None:
+    """A socket that is not mounted, or one this user may not open, is a refusal the API answers
+    503 with -- never a bare transport error out of the gate."""
+
+    def _denied(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("[Errno 13] Permission denied")
+
+    dispatcher = DockerDispatcher(
+        "img",
+        _Resolver(),
+        client=lambda: httpx.Client(transport=httpx.MockTransport(_denied), base_url="http://d"),
+    )
+    with pytest.raises(DispatchError, match="Permission denied"):
+        dispatcher.launch("run-1")
+
+
 def test_a_daemon_this_process_cannot_reach_answers_unknown() -> None:
     def _down(request: httpx.Request) -> httpx.Response:
         raise httpx.ConnectError("no socket")

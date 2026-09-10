@@ -6,6 +6,7 @@ requires-python = ">=3.12, <3.14"
 members = [
     "red-teaming-api",
     "red-teaming-catalogue",
+    "red-teaming-cli",
     "red-teaming-contracts",
     "red-teaming-delivery",
     "red-teaming-dispatch",
@@ -1391,6 +1392,25 @@ requires-dist = [
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "red-teaming-contracts", editable = "packages/contracts" },
     { name = "red-teaming-store", editable = "packages/store" },
+]
+
+[[package]]
+name = "red-teaming-cli"
+version = "0.1.0"
+source = { editable = "apps/cli" }
+dependencies = [
+    { name = "httpx" },
+    { name = "pydantic" },
+    { name = "red-teaming-contracts" },
+    { name = "typer" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "httpx", specifier = ">=0.28" },
+    { name = "pydantic", specifier = ">=2.9" },
+    { name = "red-teaming-contracts", editable = "packages/contracts" },
+    { name = "typer", specifier = ">=0.15" },
 ]
 
 [[package]]

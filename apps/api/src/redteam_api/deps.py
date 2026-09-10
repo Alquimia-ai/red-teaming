@@ -106,13 +106,16 @@ def secret_refs_for(spec: RunSpec) -> tuple[str, ...]:
 
     The spec's own -- the connector's, the judge's, the generator's, the embedder's, every
     attacker's -- and the platform's one reference the runner needs beyond them: the brain
-    registry's credential, when the deployment names one. Forwarding exactly those is least
+    registry's credential, when the deployment names one **and the run declares a knowledge base**.
+    A run with no brain pulls nothing, and asking it to carry a registry credential would refuse
+    every brainless run on a deployment whose registry needs one. Forwarding exactly those is least
     privilege by construction.
     """
     models = (spec.judge, spec.generator, spec.embedder, *spec.attackers.values())
     named = [spec.connector.secret_ref, *(m.secret_ref for m in models if m is not None)]
-    if settings().brain_registry_secret_ref:
-        named.append(settings().brain_registry_secret_ref)
+    registry = settings().brain_registry_secret_ref
+    if registry and spec.kb_ref is not None:
+        named.append(registry)
     return tuple(dict.fromkeys(ref for ref in named if ref))
 
 

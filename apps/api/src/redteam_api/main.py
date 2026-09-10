@@ -227,6 +227,21 @@ def _fields_that_differ(asked: RunSpec, frozen: RunSpec) -> list[str]:
     return sorted(differing)
 
 
+@app.get("/runs")
+def list_runs() -> dict[str, list[str]]:
+    """Every run this deployment accepted, read off the frozen specs. Ids only: a phase per run is a
+    listing per run, and `GET /runs/{id}` answers it for the one a consumer asks about."""
+    from redteam_api import deps
+    from redteam_store import layout
+
+    found = sorted(
+        run_id
+        for key in deps.store().list_prefix(layout.RUNS + "/")
+        if (run_id := layout.parse_spec_key(key)) is not None
+    )
+    return {"runs": found}
+
+
 @app.get("/runs/{run_id}", response_model=RunStatusResponse)
 def get_run(run_id: str) -> RunStatusResponse:
     """The run's phase from the store, and whether the platform still has a process for it."""

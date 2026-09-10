@@ -27,8 +27,14 @@ closure) -- and the gate: `apps/api` (`POST /runs` validates, freezes and launch
 liveness from the platform, and reports `stalled` when they disagree; `POST /runs/{id}:resume`
 relaunches; `POST /catalogues` and `/catalogues:validate` publish and check bundles; `/priors`;
 `GET /probes/{digest}`), with the in-process end-to-end (`tests/e2e/test_run_in_process.py`)
-driving the API, the runner, the memory store and recorded answers in one process. The CLI lands
-next. Keep this file honest: describe what exists, mark what is planned.
+driving the API, the runner, the memory store and recorded answers in one process -- and the
+operator's side: `apps/cli` (`redteam init | local up|down|status|logs | catalogue validate|publish
+| prior publish | run validate|start [--follow]|status|result|list|resume | receiver export`, a
+`.redteam/` workspace, the API as its only door) and `deploy/compose` (minio, the API, the seed, a
+receiver that keeps what it acknowledges, a mock assistant speaking the runtime's inference API;
+the runner created per run through the socket), with `tests/e2e/test_compose.py` (tier `docker`)
+driving the containers through the command line. Images and releases land next. Keep this file
+honest: describe what exists, mark what is planned.
 
 ## Repository structure
 
@@ -70,6 +76,8 @@ uv run python scripts/render_dockerfiles.py             # regenerate apps/*/Dock
 uv run redteam-runner run <run_id> [--dry-run]          # one run, against the configured store
 uv run redteam-api                                      # the gate on :8080
 uv run pytest -q tests/e2e                              # the platform in one process
+uv run redteam init && uv run redteam local up --build  # the local stack (docs/deploy/local.md)
+uv run pytest -m docker tests/e2e/test_compose.py       # the stack in containers, via the cli
 npm ci && pre-commit install --hook-type commit-msg      # commitlint on every commit
 ```
 

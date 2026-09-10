@@ -1,0 +1,33 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/redteam_cli"]
+
+[tool.hatch.build.targets.wheel.sources]
+"src" = ""
+
+# The local stack travels with the command line, so `redteam local up` works from a wheel or a
+# zipapp with no checkout beside it. In a checkout the same files are read from `deploy/`.
+[tool.hatch.build.targets.wheel.force-include]
+"../../deploy/compose" = "redteam_cli/deploy/compose"
+"../../deploy/seed" = "redteam_cli/deploy/seed"
+
+[project]
+name = "red-teaming-cli"
+version = "0.1.0"
+description = "The `redteam` command line: a workspace, the local stack, catalogue publishing and run governance through the API."
+requires-python = ">=3.12,<3.14"
+dependencies = [
+    "red-teaming-contracts",
+    "httpx>=0.28",
+    "pydantic>=2.9",
+    "typer>=0.15",
+]
+
+[project.scripts]
+redteam = "redteam_cli.main:cli"
+
+[tool.uv.sources]
+red-teaming-contracts = { workspace = true }

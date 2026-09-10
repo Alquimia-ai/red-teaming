@@ -159,6 +159,18 @@ def test_the_job_s_status_is_the_run_s_liveness(
     assert asked.url.path == f"{JOBS}/redteam-run-run-1"
 
 
+def test_a_server_this_process_cannot_reach_is_a_dispatch_error_at_launch() -> None:
+    def _down(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("no route")
+
+    dispatcher = _dispatcher(
+        _ApiServer(),
+        client=lambda: httpx.Client(transport=httpx.MockTransport(_down), base_url="https://k"),
+    )
+    with pytest.raises(DispatchError, match="no route"):
+        dispatcher.launch("run-1")
+
+
 def test_a_server_this_process_cannot_reach_answers_unknown() -> None:
     def _down(request: httpx.Request) -> httpx.Response:
         raise httpx.ConnectError("no route")
