@@ -36,3 +36,21 @@ jobs:
       - name: Dockerfiles
         # Rendered from the workspace closure; a hand edit is a drift the guard also refuses.
         run: uv run python scripts/render_dockerfiles.py --check
+
+  cli-zipapp:
+    # The command line ships as one file per platform on a release; building it here on every change
+    # is what keeps that release step from being the first time anybody tries.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - run: uv python install 3.12
+      - name: Build
+        run: scripts/build_pyz.sh dist
+      - name: Run it
+        run: |
+          PYZ=$(ls dist/*.pyz)
+          "$PYZ" --help
+          "$PYZ" run --help
