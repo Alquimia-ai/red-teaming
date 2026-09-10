@@ -19,6 +19,15 @@ def test_exactly_two_kinds_exist() -> None:
     assert KINDS == (ALQUIMIA, REPLAY)
 
 
+def test_the_contracts_name_the_same_kinds_the_target_builds() -> None:
+    """The API's gate refuses a kind off the contracts' list without importing this package; a
+    kind built here and not named there would be refused at the gate, and one named there and not
+    built here would die at launch."""
+    from redteam_contracts.run_spec import CONNECTOR_KINDS
+
+    assert set(CONNECTOR_KINDS) == set(KINDS)
+
+
 def test_each_kind_builds_its_own_transport() -> None:
     assert isinstance(build_target(_spec(ALQUIMIA, assistant_id="a"), "k"), AlquimiaTargetAssistant)
     assert isinstance(build_target(_spec(REPLAY), None), ReplayTargetAssistant)
