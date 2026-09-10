@@ -8,9 +8,12 @@
 [tool.uv.workspace]
 members = ["apps/*", "packages/*"]
 
-# Workspace members are declared here as they land, one line each:
-#   red-teaming-<name> = { workspace = true }
+# Every workspace member, one line each, so a member can depend on another by name.
 [tool.uv.sources]
+red-teaming-contracts = { workspace = true }
+red-teaming-settings = { workspace = true }
+red-teaming-secrets = { workspace = true }
+red-teaming-store = { workspace = true }
 
 [dependency-groups]
 dev = [
