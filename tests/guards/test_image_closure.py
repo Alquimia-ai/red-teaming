@@ -46,3 +46,21 @@ def test_the_runner_is_where_generation_meets_conduction_and_serves_no_http() ->
     assert {"packages/probes", "packages/engine", "packages/knowledge", "packages/target"} <= paths
     external = _external("apps/runner")
     assert "fastapi" not in external and "uvicorn" not in external
+
+
+def test_the_api_reaches_neither_the_assistant_nor_a_model_nor_a_brain() -> None:
+    """The gate validates, freezes, launches and reads. What it cannot import it cannot do by
+    accident: no target adapter, no knowledge client, no judge, no generation, no engine."""
+    paths = set(closure("apps/api"))
+    for absent in (
+        "packages/target",
+        "packages/knowledge",
+        "packages/judges",
+        "packages/probes",
+        "packages/engine",
+    ):
+        assert absent not in paths, f"the API gained {absent}"
+    assert "packages/catalogue" in paths, "publishing validates a bundle, which needs the package"
+    external = _external("apps/api")
+    assert "pyboltzmann" not in external
+    assert "fastapi" in external and "uvicorn" in external
