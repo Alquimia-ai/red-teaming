@@ -17,8 +17,13 @@ address) -- and conduction: `engine` (the governed door to the target with budge
 policy and safe mode; conversations an attacker steers inside one exchange; every conversation
 recorded as one trace the instant it closes; closed units replayed on a relaunch; the weakness
 profile and the exploitation report kept as control artifacts; the attack dataset per replica;
-`attack` composing all of it for one run). The apps -- runner, API, CLI -- land next. Keep this
-file honest: describe what exists, mark what is planned.
+`attack` composing all of it for one run) -- and the first app: `dispatch` (one runner per run
+through docker, a kubernetes Job or a local subprocess, each answering `status()`), `delivery`
+(the bounded, idempotent webhook), `apps/runner` (`redteam-runner run <id>`: generation in
+process, the attack, the manifest, the webhook; exit 1 on a failed attempt so the platform
+relaunches) and `scripts/render_dockerfiles.py` (each app's Dockerfile from its workspace
+closure). The API and the CLI land next. Keep this file honest: describe what exists, mark what is
+planned.
 
 ## Repository structure
 
@@ -56,6 +61,8 @@ uv run ruff check . && uv run ruff format --check .
 uv run mypy packages apps tests
 uv run pytest -q -m "not live and not docker and not k8s" # default tier, includes tests/guards
 python3 scripts/validate_adrs.py                        # what CI runs on docs/adr
+uv run python scripts/render_dockerfiles.py             # regenerate apps/*/Dockerfile (--check in CI)
+uv run redteam-runner run <run_id> [--dry-run]          # one run, against the configured store
 npm ci && pre-commit install --hook-type commit-msg      # commitlint on every commit
 ```
 
@@ -133,9 +140,11 @@ Use these words, in this sense, everywhere -- code, docs, commits:
 | `tests/guards/test_no_ambient_credentials.py` | The model-facing surface never reads the process environment |
 | `tests/guards/test_no_status_literals.py` | No HTTP status is compared to a number; failures are classified by name |
 | `tests/guards/test_inference_only.py` | The training stack is absent; the exploiter's search cannot train |
+| `tests/guards/test_dockerfiles.py` | Every app's Dockerfile is exactly what its workspace closure renders to |
+| `tests/guards/test_image_closure.py` | What an image carries is a property of the graph: the runner serves no HTTP |
 | `packages/contracts/tests/test_plan_determinism.py` | Work-unit keys derive from the plan alone, across processes |
 
-Guards for Dockerfile rendering and release closures arrive with the apps they protect.
+The release-closure guard arrives with the release configuration it checks.
 
 ## Skills
 
