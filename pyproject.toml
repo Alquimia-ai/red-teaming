@@ -23,6 +23,7 @@ red-teaming-engine = { workspace = true }
 red-teaming-dispatch = { workspace = true }
 red-teaming-delivery = { workspace = true }
 red-teaming-runner = { workspace = true }
+red-teaming-api = { workspace = true }
 
 [dependency-groups]
 dev = [
