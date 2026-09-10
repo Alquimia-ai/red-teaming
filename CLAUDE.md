@@ -9,10 +9,12 @@ and a manifest that says exactly what was planned, what closed and what failed.
 
 The repository is being built in phases, one pull request each. Landed so far: the foundations
 (workspace, conventions, CI, guards, skills), the IO-free core -- `contracts`, `settings`,
-`secrets`, `store` -- and the model-facing packages -- `judges` (providers `openrouter` and
-`openai_compatible`, the logprob grader), `knowledge` (read-only brain client) and `target` (the
-Alquimia runtime adapter and replay). Catalogue, probes, engine and the apps land next. Keep this
-file honest: describe what exists, mark what is planned.
+`secrets`, `store` -- the model-facing packages -- `judges` (providers `openrouter` and
+`openai_compatible`, the logprob grader), `knowledge` (read-only brain client), `target` (the
+Alquimia runtime adapter and replay) -- and generation: `catalogue` (bundles, the construction
+registry, validation and publishing) and `probes` (one run's probe set, pulled brain, content
+address). Engine and the apps land next. Keep this file honest: describe what exists, mark what is
+planned.
 
 ## Repository structure
 
@@ -23,7 +25,7 @@ deploy/          compose (local), charts (Helm), catalog (model x hardware), clo
 docs/            adr/ (why), architecture/ (what), components/ (how), deploy/ (operate)
 tests/guards/    tests that protect the architecture, not a feature
 scripts/         repository tooling (ADR validator, Dockerfile renderer)
-.claude/skills/  commit, pr, adr (catalogue authoring arrives with the catalogue package)
+.claude/skills/  commit, pr, adr, catalogue
 ```
 
 Packages and their allowed imports (`tests/guards/test_isolation.py` enforces the graph; a package
@@ -126,10 +128,10 @@ Use these words, in this sense, everywhere -- code, docs, commits:
 | `tests/guards/test_no_hardcoded_models.py` | No model id or provider URL is bound in code; models arrive in the spec |
 | `tests/guards/test_no_ambient_credentials.py` | The model-facing surface never reads the process environment |
 | `tests/guards/test_no_status_literals.py` | No HTTP status is compared to a number; failures are classified by name |
+| `tests/guards/test_inference_only.py` | The training stack is absent; the exploiter's search cannot train |
 | `packages/contracts/tests/test_plan_determinism.py` | Work-unit keys derive from the plan alone, across processes |
 
-Guards for Dockerfile rendering, release closures and inference-only search arrive with the packages
-they protect.
+Guards for Dockerfile rendering and release closures arrive with the apps they protect.
 
 ## Skills
 
@@ -138,3 +140,4 @@ they protect.
 | `/commit` | Changes are ready to be committed |
 | `/pr` | A branch is ready for review against `develop` |
 | `/adr` | A decision about the system was made |
+| `/catalogue` | Authoring or fixing a catalogue bundle (plugins, strategies, contract, grounding, delivery) |
