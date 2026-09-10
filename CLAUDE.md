@@ -11,10 +11,14 @@ The repository is being built in phases, one pull request each. Landed so far: t
 (workspace, conventions, CI, guards, skills), the IO-free core -- `contracts`, `settings`,
 `secrets`, `store` -- the model-facing packages -- `judges` (providers `openrouter` and
 `openai_compatible`, the logprob grader), `knowledge` (read-only brain client), `target` (the
-Alquimia runtime adapter and replay) -- and generation: `catalogue` (bundles, the construction
+Alquimia runtime adapter and replay) -- generation: `catalogue` (bundles, the construction
 registry, validation and publishing) and `probes` (one run's probe set, pulled brain, content
-address). Engine and the apps land next. Keep this file honest: describe what exists, mark what is
-planned.
+address) -- and conduction: `engine` (the governed door to the target with budget, pacing, retry
+policy and safe mode; conversations an attacker steers inside one exchange; every conversation
+recorded as one trace the instant it closes; closed units replayed on a relaunch; the weakness
+profile and the exploitation report kept as control artifacts; the attack dataset per replica;
+`attack` composing all of it for one run). The apps -- runner, API, CLI -- land next. Keep this
+file honest: describe what exists, mark what is planned.
 
 ## Repository structure
 
