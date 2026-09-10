@@ -19,6 +19,14 @@ DEFAULT_MAX_RETRIES = 3
 """Enough to ride out a burst of rate limiting; few enough that a target that is down is given up on
 within one probe's worth of attempts rather than hammered."""
 
+CONNECTOR_KINDS: tuple[str, ...] = ("alquimia", "replay")
+"""Every adapter a `ConnectorSpec.kind` may name: the Alquimia runtime, and recorded answers.
+
+Stated here as well as in the target package, because the API's gate refuses a kind nothing builds
+before a spec is frozen and the API carries no target adapter. A test in the target package holds
+the two lists together.
+"""
+
 
 class ConnectorSpec(BaseModel):
     """How to reach the assistant under test, and what it is allowed to do while being attacked."""
