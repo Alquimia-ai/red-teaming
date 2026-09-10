@@ -11,6 +11,7 @@ immutable: once accepted they are not rewritten in place; they are superseded by
 | [002](002-stateless-api-and-one-runner-per-run.md) | A stateless API and one runner process per run | ✅ Accepted | api, runner, dispatch, store |
 | [003](003-append-only-store-and-content-identity.md) | Append-only store and content-derived identity | ✅ Accepted | store, contracts, evidence |
 | [004](004-models-are-configuration-and-one-governed-door-to-the-target.md) | Models are configuration and one governed door to the target | ✅ Accepted | judges, target, knowledge, provenance |
+| [005](005-catalogue-bundles-name-constructions-the-runtime-builds.md) | Catalogue bundles name constructions the runtime builds | ✅ Accepted | catalogue, probes, contracts |
 
 **Status legend:** ✅ Accepted · 📝 Proposed · 🚫 Deprecated · ↩️ Superseded by ADR-NNN
 
