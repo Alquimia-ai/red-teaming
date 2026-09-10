@@ -1,0 +1,9 @@
+{
+  "name": "red-teaming-tooling",
+  "private": true,
+  "description": "Commit linting for the red-teaming monorepo; the Python workspace is managed by uv.",
+  "devDependencies": {
+    "@commitlint/cli": "^19.8.1",
+    "@commitlint/config-conventional": "^19.8.1"
+  }
+}
