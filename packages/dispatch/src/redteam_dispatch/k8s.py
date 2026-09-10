@@ -175,8 +175,14 @@ class K8sJobDispatcher:
     ) -> JobHandle:
         name = job_name(run_id)
         body = self.manifest(run_id, env=env, secret_refs=secret_refs)
-        with self._client() as client:
-            created = client.post(self._jobs, json=body)
+        try:
+            with self._client() as client:
+                created = client.post(self._jobs, json=body)
+        except httpx.HTTPError as down:
+            raise DispatchError(
+                f"the API server could not be reached to create {name}: "
+                f"{type(down).__name__}: {down}"
+            ) from down
         if created.status_code == HTTPStatus.CONFLICT:
             raise AlreadyRunning(f"a Job named {name} already exists in {self._namespace!r}")
         if created.is_error:

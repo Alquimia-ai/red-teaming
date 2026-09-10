@@ -102,25 +102,36 @@ class DockerDispatcher:
         if self._network:
             body["HostConfig"]["NetworkMode"] = self._network
 
-        with self._client() as client:
-            created = client.post("/containers/create", params={"name": name}, json=body)
-            if created.status_code == HTTPStatus.CONFLICT:
-                # A duplicate name refused by the daemon is the uniqueness invariant working.
-                raise AlreadyRunning(f"a container named {name} already exists")
-            if created.status_code == HTTPStatus.NOT_FOUND:
-                raise DispatchError(
-                    f"the runner image {self._image!r} is not on the daemon. Build it with "
-                    f"docker build -t {self._image} -f apps/runner/Dockerfile ."
-                )
-            if created.is_error:
-                raise DispatchError(f"docker refused to create {name}: {created.text}")
+        try:
+            with self._client() as client:
+                created = client.post("/containers/create", params={"name": name}, json=body)
+                started = self._start(client, created, name)
+        except httpx.HTTPError as down:
+            raise DispatchError(
+                f"the docker daemon could not be reached to launch {name}: "
+                f"{type(down).__name__}: {down}. Is the socket mounted, and may this process "
+                f"open it?"
+            ) from down
+        return JobHandle(run_id=run_id, backend=BACKEND, identifier=started)
 
-            container_id = str(created.json()["Id"])
-            started = client.post(f"/containers/{container_id}/start")
-            if started.is_error:
-                raise DispatchError(f"docker refused to start {name}: {started.text}")
+    def _start(self, client: httpx.Client, created: httpx.Response, name: str) -> str:
+        """Read the daemon's answer to the create, then start what it created."""
+        if created.status_code == HTTPStatus.CONFLICT:
+            # A duplicate name refused by the daemon is the uniqueness invariant working.
+            raise AlreadyRunning(f"a container named {name} already exists")
+        if created.status_code == HTTPStatus.NOT_FOUND:
+            raise DispatchError(
+                f"the runner image {self._image!r} is not on the daemon. Build it with "
+                f"docker build -t {self._image} -f apps/runner/Dockerfile ."
+            )
+        if created.is_error:
+            raise DispatchError(f"docker refused to create {name}: {created.text}")
 
-        return JobHandle(run_id=run_id, backend=BACKEND, identifier=container_id)
+        container_id = str(created.json()["Id"])
+        started = client.post(f"/containers/{container_id}/start")
+        if started.is_error:
+            raise DispatchError(f"docker refused to start {name}: {started.text}")
+        return container_id
 
     def status(self, run_id: str) -> JobState:
         """What the daemon says about the run's container.
