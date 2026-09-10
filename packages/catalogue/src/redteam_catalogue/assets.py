@@ -322,6 +322,48 @@ def narrow(
     )
 
 
+@dataclass(frozen=True)
+class Checked:
+    """A bundle that passed every check publishing runs, as publishing would write it."""
+
+    needs_base: frozenset[str]
+    """The grounding declaration, normalised."""
+
+    delivered: dict[str, delivery_store.Delivery]
+    """The delivery declaration, normalised, by strategy id."""
+
+    @property
+    def conducted(self) -> tuple[str, ...]:
+        return tuple(sorted(self.delivered))
+
+
+def check(
+    catalogue: Catalogue,
+    contract: ContractSpec,
+    engines: Sequence[Any],
+    transforms: Sequence[Any] = (),
+    twisters: Sequence[Any] = (),
+    *,
+    needs_base: Mapping[str, Any] | Sequence[str] | None = None,
+    delivery: Mapping[str, Any] | None = None,
+) -> Checked:
+    """Everything publishing checks, without writing: the six rejections against the bundle's own
+    contract, the grounding declaration against the phrasings it describes, the delivery
+    declaration against the strategies it names.
+
+    What `POST /catalogues:validate` runs, so an author finds out before a version is taken.
+
+    Raises:
+        ValueError: As `publish` would, for the same bundle.
+    """
+    validate(catalogue, validation_contract(contract), engines, transforms, twisters)
+    grounded = grounding_store.normalise(needs_base) if needs_base is not None else frozenset()
+    _validate_grounding(grounded, catalogue)
+    delivered = delivery_store.normalise(delivery) if delivery else {}
+    _validate_delivery(delivered, catalogue)
+    return Checked(needs_base=grounded, delivered=delivered)
+
+
 def publish(
     store: ObjectStore,
     name: str,
@@ -363,11 +405,16 @@ def publish(
             strategy the catalogue does not carry, or conducts a control.
         ObjectAlreadyExists: Every version this publish tried to claim was taken first.
     """
-    validate(catalogue, validation_contract(contract), engines, transforms, twisters)
-    grounded = grounding_store.normalise(needs_base) if needs_base is not None else frozenset()
-    _validate_grounding(grounded, catalogue)
-    delivered = delivery_store.normalise(delivery) if delivery else {}
-    _validate_delivery(delivered, catalogue)
+    checked = check(
+        catalogue,
+        contract,
+        engines,
+        transforms,
+        twisters,
+        needs_base=needs_base,
+        delivery=delivery,
+    )
+    grounded, delivered = checked.needs_base, checked.delivered
 
     payload = _canonical(catalogue)
     contract_bytes = contract_store.encode(as_raw(contract))
