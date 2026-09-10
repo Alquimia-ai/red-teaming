@@ -1,0 +1,21 @@
+name: Validate ADRs
+
+on:
+  pull_request:
+    branches: [main, develop]
+    paths: ["docs/adr/**"]
+  push:
+    branches: [main, develop]
+    paths: ["docs/adr/**"]
+
+jobs:
+  validate:
+    name: validate-adrs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Validate docs/adr/ against the project conventions
+        run: python3 scripts/validate_adrs.py

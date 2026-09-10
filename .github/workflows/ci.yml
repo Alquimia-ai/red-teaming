@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main, develop]
+  push:
+    branches: [main, develop]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # the vocabulary guard reads `git ls-files`
+          fetch-depth: 1
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - run: uv python install 3.12
+      - run: uv sync --all-packages
+      - name: Lint
+        run: uv run ruff check .
+      - name: Format
+        run: uv run ruff format --check .
+      - name: Types
+        # `packages/` and `apps/` fill in as the workspace grows; the guards are typed from day one.
+        run: uv run mypy tests $([ -d packages ] && echo packages) $([ -d apps ] && echo apps)
+      - name: Tests
+        # Everything but the tiers that need credentials, a docker daemon or a cluster.
+        run: uv run pytest -q -m "not live and not docker and not k8s"
