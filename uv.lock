@@ -6,6 +6,7 @@ requires-python = ">=3.12, <3.14"
 members = [
     "red-teaming-catalogue",
     "red-teaming-contracts",
+    "red-teaming-engine",
     "red-teaming-judges",
     "red-teaming-knowledge",
     "red-teaming-probes",
@@ -1354,6 +1355,33 @@ dependencies = [
 requires-dist = [
     { name = "pydantic", specifier = ">=2.9" },
     { name = "pyyaml", specifier = ">=6.0" },
+]
+
+[[package]]
+name = "red-teaming-engine"
+version = "0.1.0"
+source = { editable = "packages/engine" }
+dependencies = [
+    { name = "gaussia" },
+    { name = "langchain-core" },
+    { name = "pydantic" },
+    { name = "red-teaming-catalogue" },
+    { name = "red-teaming-contracts" },
+    { name = "red-teaming-judges" },
+    { name = "red-teaming-store" },
+    { name = "red-teaming-target" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "gaussia", specifier = ">=1.2.0" },
+    { name = "langchain-core", specifier = ">=0.3" },
+    { name = "pydantic", specifier = ">=2.9" },
+    { name = "red-teaming-catalogue", editable = "packages/catalogue" },
+    { name = "red-teaming-contracts", editable = "packages/contracts" },
+    { name = "red-teaming-judges", editable = "packages/judges" },
+    { name = "red-teaming-store", editable = "packages/store" },
+    { name = "red-teaming-target", editable = "packages/target" },
 ]
 
 [[package]]
