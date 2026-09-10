@@ -1,0 +1,9 @@
+# Release Please writes one CHANGELOG per released component. A union merge concatenates instead
+# of conflicting when a promotion touches the same file, and Release Please de-duplicates on its
+# next run.
+CHANGELOG.md merge=union
+**/CHANGELOG.md merge=union
+
+# Generated lockfiles: a conflict is resolved by re-locking, never by hand.
+uv.lock -diff linguist-generated=true
+package-lock.json -diff linguist-generated=true
