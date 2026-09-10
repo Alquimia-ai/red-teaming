@@ -1,0 +1,54 @@
+.git
+.gitignore
+.github
+.claude
+
+# Python artifacts
+**/__pycache__
+**/*.pyc
+**/*.pyo
+**/*.egg-info
+**/dist
+**/build
+**/.eggs
+
+# Node artifacts
+**/node_modules
+**/*.log
+
+# Virtual environments
+**/.venv
+**/venv
+**/env
+
+# IDE and OS
+.vscode
+.idea
+.cursor
+**/*.swp
+.DS_Store
+
+# Environment and secrets
+.env
+.env.*
+**/*.pem
+**/*.key
+**/*.age
+.redteam
+
+# Tests and dev tooling
+**/tests
+**/.pytest_cache
+**/.ruff_cache
+**/.mypy_cache
+**/.coverage
+**/htmlcov
+
+# Documentation and deployment material
+docs
+deploy
+**/*.md
+
+# Docker
+apps/*/Dockerfile
+docker-compose*.yml

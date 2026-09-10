@@ -1,0 +1,18 @@
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.16.6
+    hooks:
+      - id: ruff
+        files: ^(apps|packages|tests|scripts)/
+        args: [--fix]
+      - id: ruff-format
+        files: ^(apps|packages|tests|scripts)/
+
+  - repo: local
+    hooks:
+      - id: commitlint
+        name: commitlint
+        language: system
+        entry: npx --no -- commitlint --edit
+        stages: [commit-msg]
+        pass_filenames: false
