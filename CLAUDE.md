@@ -22,8 +22,13 @@ through docker, a kubernetes Job or a local subprocess, each answering `status()
 (the bounded, idempotent webhook), `apps/runner` (`redteam-runner run <id>`: generation in
 process, the attack, the manifest, the webhook; exit 1 on a failed attempt so the platform
 relaunches) and `scripts/render_dockerfiles.py` (each app's Dockerfile from its workspace
-closure). The API and the CLI land next. Keep this file honest: describe what exists, mark what is
-planned.
+closure) -- and the gate: `apps/api` (`POST /runs` validates, freezes and launches; `POST
+/runs:validate` dry-runs the gate; `GET /runs/{id}` derives the phase from the store and the
+liveness from the platform, and reports `stalled` when they disagree; `POST /runs/{id}:resume`
+relaunches; `POST /catalogues` and `/catalogues:validate` publish and check bundles; `/priors`;
+`GET /probes/{digest}`), with the in-process end-to-end (`tests/e2e/test_run_in_process.py`)
+driving the API, the runner, the memory store and recorded answers in one process. The CLI lands
+next. Keep this file honest: describe what exists, mark what is planned.
 
 ## Repository structure
 
@@ -63,6 +68,8 @@ uv run pytest -q -m "not live and not docker and not k8s" # default tier, includ
 python3 scripts/validate_adrs.py                        # what CI runs on docs/adr
 uv run python scripts/render_dockerfiles.py             # regenerate apps/*/Dockerfile (--check in CI)
 uv run redteam-runner run <run_id> [--dry-run]          # one run, against the configured store
+uv run redteam-api                                      # the gate on :8080
+uv run pytest -q tests/e2e                              # the platform in one process
 npm ci && pre-commit install --hook-type commit-msg      # commitlint on every commit
 ```
 
@@ -141,7 +148,7 @@ Use these words, in this sense, everywhere -- code, docs, commits:
 | `tests/guards/test_no_status_literals.py` | No HTTP status is compared to a number; failures are classified by name |
 | `tests/guards/test_inference_only.py` | The training stack is absent; the exploiter's search cannot train |
 | `tests/guards/test_dockerfiles.py` | Every app's Dockerfile is exactly what its workspace closure renders to |
-| `tests/guards/test_image_closure.py` | What an image carries is a property of the graph: the runner serves no HTTP |
+| `tests/guards/test_image_closure.py` | What an image carries is a property of the graph: the runner serves no HTTP; the API reaches no assistant, model or brain |
 | `packages/contracts/tests/test_plan_determinism.py` | Work-unit keys derive from the plan alone, across processes |
 
 The release-closure guard arrives with the release configuration it checks.
