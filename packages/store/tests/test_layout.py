@@ -21,6 +21,7 @@ def test_the_paths_of_one_run() -> None:
     assert layout.exploit(RUN) == f"runs/{RUN}/exploit.json"
     assert layout.conduction(RUN) == f"runs/{RUN}/conduction.json"
     assert layout.session(RUN, "exploit") == f"runs/{RUN}/sessions/exploit.json"
+    assert layout.searched(RUN) == f"runs/{RUN}/searched.json"
     assert layout.manifest(RUN) == f"runs/{RUN}/manifest.json"
     assert layout.blob("a" * 64) == f"blobs/{'a' * 64}"
 
