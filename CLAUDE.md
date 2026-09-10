@@ -7,8 +7,9 @@ and a manifest that says exactly what was planned, what closed and what failed.
 
 ## Status
 
-The repository is being built in phases, one pull request each. This phase laid the foundations:
-workspace, conventions, CI, guards, skills and the first decisions. Packages and apps land next.
+The repository is being built in phases, one pull request each. Landed so far: the foundations
+(workspace, conventions, CI, guards, skills) and the IO-free core -- `contracts`, `settings`,
+`secrets`, `store`. Models, knowledge, target, catalogue, probes, engine and the apps land next.
 Keep this file honest: describe what exists, mark what is planned.
 
 ## Repository structure
@@ -23,7 +24,8 @@ scripts/         repository tooling (ADR validator, Dockerfile renderer)
 .claude/skills/  commit, pr, adr (catalogue authoring arrives with the catalogue package)
 ```
 
-Planned packages and their allowed imports (a guard enforces the graph once they exist):
+Packages and their allowed imports (`tests/guards/test_isolation.py` enforces the graph; a package
+not in its table cannot be imported by anyone):
 
 ```
 contracts, settings, secrets, delivery -> nothing
@@ -117,10 +119,12 @@ Use these words, in this sense, everywhere -- code, docs, commits:
 |---|---|
 | `tests/guards/test_vocabulary.py` | The repository's vocabulary: unrelated project names never appear in content or paths |
 | `tests/guards/test_scopes.py` | Every workspace member has a commit scope |
+| `tests/guards/test_isolation.py` | The import graph above; `pyboltzmann` is imported only by `knowledge` |
+| `tests/guards/test_no_delete.py` | The store interface has no `delete` and nothing calls one |
+| `packages/contracts/tests/test_plan_determinism.py` | Work-unit keys derive from the plan alone, across processes |
 
-Guards for import isolation, Dockerfile rendering, release closures, hardcoded models, ambient
-credentials, status literals, inference-only search, no-delete store and plan determinism arrive
-with the packages they protect.
+Guards for Dockerfile rendering, release closures, hardcoded models, ambient credentials, status
+literals and inference-only search arrive with the packages they protect.
 
 ## Skills
 
