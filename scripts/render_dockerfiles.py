@@ -45,6 +45,15 @@ class App:
 
 
 APPS: dict[str, App] = {
+    "api": App(
+        dist="red-teaming-api",
+        service="redteam_api.main:app",
+        why=(
+            "The HTTP gate. It validates, freezes, launches, publishes and reads, and it does no\n"
+            "# work: it carries no target adapter, no knowledge client and no model. It does\n"
+            "# carry the catalogue package, so a bundle is validated and published synchronously."
+        ),
+    ),
     "runner": App(
         dist="red-teaming-runner",
         entrypoint="redteam-runner",
