@@ -74,6 +74,25 @@ class Settings(BaseSettings):
     k8s_namespace: str = "red-teaming"
     """Where the k8s backend creates a run's Job. The API's own namespace, by convention."""
 
+    k8s_runner_secret: str = "red-teaming-runner-secrets"
+    """The Secret a run's `secret_ref`s are read from. Each reference the spec names becomes a
+    `secretKeyRef` into this Secret on the Job -- a key, never a value, in the Job's spec."""
+
+    k8s_runner_config_map: str | None = None
+    """A ConfigMap the Job reads its `REDTEAM_*` wiring from, when the deployment keeps it there
+    rather than passing it per launch."""
+
+    k8s_service_account: str | None = None
+    """The service account a run's pod runs as. Absent takes the namespace's default."""
+
+    k8s_job_backoff_limit: int = 2
+    """How many times the platform relaunches a failed runner before giving the run up. Every
+    relaunch resumes from the difference, so a retry never repeats closed work."""
+
+    k8s_job_ttl_seconds: int = 86400
+    """How long a finished Job stays for inspection before the platform removes it. A day: long
+    enough to read the log of a runner that died, short enough that the namespace does not fill."""
+
     brain_registry_insecure: bool = False
     """Whether the brain registry may be reached over plain HTTP. For a local registry only."""
 
