@@ -3,9 +3,10 @@
 A `secret_ref` is resolved by the deployment's `SecretResolver` and nowhere else. A builder that
 read the environment itself measured, under any other backend, with whatever key the process
 happened to hold -- a credential the spec never declared -- or failed with a 401 far from its
-cause. The judges, the knowledge client, the target adapters and probe generation are the surface
-this holds for; the dispatcher inheriting the API's environment for a local subprocess, and the
-secrets package's own `env` backend, are different things and are not covered here.
+cause. The judges, the knowledge client, the target adapters, the catalogue's constructions and
+probe generation are the surface this holds for; the dispatcher inheriting the API's environment
+for a local subprocess, and the secrets package's own `env` backend, are different things and are
+not covered here.
 
 Read off the syntax tree rather than by substring: `from os import environ` is a read the substring
 missed, and a docstring that mentions the rule is not a violation of it.
@@ -21,6 +22,7 @@ SURFACE = (
     "packages/judges/src",
     "packages/knowledge/src",
     "packages/target/src",
+    "packages/catalogue/src",
     "packages/probes/src",
 )
 
