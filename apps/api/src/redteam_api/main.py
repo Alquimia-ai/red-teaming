@@ -26,9 +26,21 @@ from redteam_contracts.manifest import RunPhase
 from redteam_contracts.run_spec import RunSpec
 from redteam_dispatch import JobState
 
+
+def _version() -> str:
+    """The installed distribution's version, which release-please bumps; a placeholder when this
+    module is imported from a checkout nothing installed."""
+    from importlib.metadata import PackageNotFoundError, version
+
+    try:
+        return version("red-teaming-api")
+    except PackageNotFoundError:
+        return "0.0.0"
+
+
 app = FastAPI(
     title="Red Teaming API",
-    version="0.1.0",
+    version=_version(),
     summary="Accepts runs, freezes the spec, launches a runner, publishes catalogue bundles and "
     "priors, and answers state from the store and the platform.",
 )
