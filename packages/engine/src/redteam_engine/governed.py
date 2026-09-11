@@ -35,6 +35,7 @@ from gaussia.schemas.roastme import TargetResponse
 
 from redteam_contracts.failure import TransportFailure
 from redteam_contracts.run_spec import DEFAULT_MAX_RETRIES, ConnectorSpec
+from redteam_engine.call_journal import CallJournal
 from redteam_engine.errors import error_for
 from redteam_engine.failure_policy import Action, policy_for
 from redteam_engine.ledger import FailureLedger
@@ -61,6 +62,8 @@ class BudgetExhausted(RuntimeError):
     """The run hit its ceiling. Not a lost run: everything closed is in the store with honest
     coverage, and the consumer decides whether the partial thing is useful."""
 
+    kind = "budget_exhausted"
+
 
 @dataclass
 class Budget:
@@ -72,16 +75,20 @@ class Budget:
     the plan intended.
     """
 
+    journal: CallJournal | None = None
     max_target_calls: int | None = None
     max_wall_seconds: int | None = None
     started_at: float = field(default_factory=time.monotonic)
     calls: int = 0
 
-    def charge(self) -> None:
-        self.calls += 1
-        if self.max_target_calls is not None and self.calls > self.max_target_calls:
-            raise BudgetExhausted(f"budget of {self.max_target_calls} target calls exhausted")
+    def charge(self, query: str | None = None, session_id: str | None = None) -> None:
         self.charge_time()
+        if self.journal is not None:
+            self.calls = self.journal.reserve(query, session_id)
+        else:
+            if self.max_target_calls is not None and self.calls >= self.max_target_calls:
+                raise BudgetExhausted(f"budget of {self.max_target_calls} target calls exhausted")
+            self.calls += 1
 
     def charge_time(self) -> None:
         """The wall clock alone, for waiting that costs the assistant nothing.
@@ -176,6 +183,8 @@ class GovernedTarget(TargetAssistant):  # type: ignore[misc]  # gaussia ships no
         self.conversations: list[Conversation] = []
         """Every closed exchange, whole."""
 
+        self.fatal: BaseException | None = None
+
         self.conducted = 0
         """Exchanges delivered as a conversation rather than one turn."""
 
@@ -186,6 +195,13 @@ class GovernedTarget(TargetAssistant):  # type: ignore[misc]  # gaussia ships no
         to be."""
 
     def send(self, query: str, session_id: str | None = None) -> TargetResponse:
+        try:
+            return self._send(query, session_id)
+        except BaseException as failed:
+            self.fatal = failed
+            raise
+
+    def _send(self, query: str, session_id: str | None = None) -> TargetResponse:
         planned = self._planned_next()
         if planned is None or not planned.delivery.conducted:
             response, fatal = self._exchange(query, session_id)
@@ -211,6 +227,7 @@ class GovernedTarget(TargetAssistant):  # type: ignore[misc]  # gaussia ships no
         if conversation is not None:
             self._close(conversation)
         if fatal is not None:
+            self.fatal = fatal
             raise fatal
         assert conversation is not None
         return conversation.final
@@ -235,7 +252,7 @@ class GovernedTarget(TargetAssistant):  # type: ignore[misc]  # gaussia ships no
         while True:
             try:
                 self._rate.wait()
-                self._budget.charge()
+                self._budget.charge(query, session_id)
             except BudgetExhausted as exhausted:
                 if last_failed is not None:
                     # The budget ran out between a failed attempt and its retry. The attempt still
@@ -245,6 +262,8 @@ class GovernedTarget(TargetAssistant):  # type: ignore[misc]  # gaussia ships no
                     return last_failed[0], exhausted
                 return None, exhausted
             response = self._inner.send(query, session_id)
+            if self._budget.journal is not None:
+                self._budget.journal.responded(self._budget.calls, response)
             failure = failure_of(response)
 
             if failure is None:

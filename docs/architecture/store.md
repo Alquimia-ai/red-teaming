@@ -64,3 +64,16 @@ disagree with each other or with the result because all three are derived from t
 `memory` for tests and single-process rehearsal; `s3` for everything else -- MinIO on the
 appliance, S3 on EKS, Cloud Storage's S3-compatible endpoint on GKE. Selected by
 `REDTEAM_STORE_BACKEND`; a backend the settings name and the build does not serve refuses to start.
+
+## Durable recovery
+
+New runs reserve every live target call under `calls/entries/` before transport. Results are
+separate immutable entries; a reservation without a result remains consumed. The budget header
+binds the ledger to the frozen limit, and a recorded exhaustion is terminal for that run's attack.
+
+`recovery/exploit.json` contains search provenance and sessions atomically, including explicit
+empty results. `recovery/conduction.json` contains dataset sessions and conduction provenance.
+The ordinary deliverable files are verified projections: resume completes interrupted projections
+without target interactions. An existing dataset alone is never sufficient for completion.
+An interrupted search without a recoverable checkpoint, or legacy evidence with unknown budget or
+missing provenance, fails with `recovery_incomplete` and requires a new run id.
