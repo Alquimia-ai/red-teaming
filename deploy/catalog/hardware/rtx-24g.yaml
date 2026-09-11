@@ -1,0 +1,10 @@
+# A 24 GB consumer card. Tight: the judge's 16 GB of weights leave a few GB of KV cache, so the
+# context is capped at 4k and the embedder squeezed into what is left. Sharing the card between the
+# two pods needs the device plugin configured for it, as on the L40S.
+models:
+  judge:
+    gpuMemoryUtilization: 0.70
+    maxModelLen: 4096
+  embedder:
+    gpuMemoryUtilization: 0.12
+    maxModelLen: 4096

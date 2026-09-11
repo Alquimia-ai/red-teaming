@@ -1,0 +1,54 @@
+# Models are configuration. This chart serves whatever `models` names and knows nothing about which
+# model should play which role: that is the run spec's decision, made per run by `ModelSpec` with
+# `provider: openai_compatible`, `endpoint: http://<name>.<namespace>.svc:8000/v1`,
+# `self_hosted: true`. The catalog under `deploy/catalog/` supplies entries and their fit to a GPU.
+
+image:
+  # vLLM's OpenAI-compatible server. Pinned by tag; the appliance pulls it once.
+  repository: vllm/vllm-openai
+  tag: v0.11.0
+  pullPolicy: IfNotPresent
+  pullSecrets: []
+
+# The container runtime that hands the GPU to the pod. `nvidia` is what the NVIDIA container
+# toolkit registers under k3s and RHEL AI; empty leaves the cluster's default.
+runtimeClassName: nvidia
+
+# Where the node keeps model files, mounted read-only into every pod at `/models`. Each entry's
+# `path` is relative to it. Offline: nothing is downloaded at start, which is what makes a start
+# take seconds and an appliance work without egress.
+modelsHostPath: /var/lib/red-teaming/models
+hfOffline: true
+
+# A Secret holding `VLLM_API_KEY`: the key every endpoint asks for, and the one a run's
+# `ModelSpec.secret_ref` resolves to. Empty serves without a key -- for a cluster whose network is
+# the boundary.
+apiKeySecret: ""
+
+# Entries by name, so a hardware overlay under `deploy/catalog/hardware/` can adjust one field of
+# one entry (`models.judge.gpuMemoryUtilization`) and helm merges it. An empty map serves nothing.
+#
+#   judge:
+#     enabled: true
+#     path: qwen3-8b                 # under modelsHostPath
+#     servedModelName: qwen3-8b      # what a ModelSpec.model names
+#     task: generate                 # generate | embed
+#     maxModelLen: 8192
+#     gpuMemoryUtilization: 0.55
+#     extraArgs: []
+#     resources: {limits: {nvidia.com/gpu: 1}}
+models: {}
+
+defaults:
+  task: generate
+  maxModelLen: 8192
+  gpuMemoryUtilization: 0.90
+  dtype: auto
+  port: 8000
+  resources:
+    requests: { cpu: "2", memory: 8Gi, nvidia.com/gpu: 1 }
+    limits: { cpu: "8", memory: 32Gi, nvidia.com/gpu: 1 }
+  readiness:
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    failureThreshold: 60

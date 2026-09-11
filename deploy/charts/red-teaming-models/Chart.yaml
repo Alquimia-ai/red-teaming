@@ -1,0 +1,13 @@
+apiVersion: v2
+name: red-teaming-models
+description: >-
+  The models a run declares by role -- control judge, generator, attackers, embedder -- served on
+  the cluster's own GPU by vLLM behind an OpenAI-compatible endpoint. One Deployment and one Service
+  per entry; the model files come from the node's disk, never from the network at start.
+type: application
+version: 0.1.0
+appVersion: "0.11.0"
+keywords: [red-teaming, alquimia, vllm]
+home: https://github.com/Alquimia-ai/red-teaming
+sources:
+  - https://github.com/Alquimia-ai/red-teaming

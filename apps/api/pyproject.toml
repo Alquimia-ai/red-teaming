@@ -1,0 +1,38 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/redteam_api"]
+
+[tool.hatch.build.targets.wheel.sources]
+"src" = ""
+
+[project]
+name = "red-teaming-api"
+version = "0.0.0"
+description = "The HTTP gate: accepts runs, freezes the spec, launches a runner, publishes catalogue bundles and priors, and answers state from the store and the platform."
+requires-python = ">=3.12,<3.14"
+dependencies = [
+    "red-teaming-contracts",
+    "red-teaming-settings",
+    "red-teaming-secrets",
+    "red-teaming-store",
+    "red-teaming-dispatch",
+    "red-teaming-catalogue",
+    "fastapi>=0.115",
+    "httpx>=0.28",
+    "pydantic>=2.9",
+    "uvicorn>=0.32",
+]
+
+[project.scripts]
+redteam-api = "redteam_api.main:cli"
+
+[tool.uv.sources]
+red-teaming-contracts = { workspace = true }
+red-teaming-settings = { workspace = true }
+red-teaming-secrets = { workspace = true }
+red-teaming-store = { workspace = true }
+red-teaming-dispatch = { workspace = true }
+red-teaming-catalogue = { workspace = true }

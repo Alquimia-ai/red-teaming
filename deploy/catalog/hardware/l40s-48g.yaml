@@ -1,0 +1,10 @@
+# One L40S, 48 GB. The judge takes a little over half -- 16 GB of weights and the rest KV cache for
+# an 8k context -- and the embedder a tenth. Two pods request the same GPU, so the node has to be
+# configured to share it (time-slicing in the device plugin's config, or MIG where the card allows);
+# with exclusive allocation, serve the embedder on a second card or a second node.
+models:
+  judge:
+    gpuMemoryUtilization: 0.55
+    maxModelLen: 8192
+  embedder:
+    gpuMemoryUtilization: 0.10

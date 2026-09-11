@@ -1,0 +1,44 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/redteam_runner"]
+
+[tool.hatch.build.targets.wheel.sources]
+"src" = ""
+
+[project]
+name = "red-teaming-runner"
+version = "0.0.0"
+description = "The runner: one run, from generation to manifest, in one process; then exit."
+requires-python = ">=3.12,<3.14"
+dependencies = [
+    "red-teaming-contracts",
+    "red-teaming-settings",
+    "red-teaming-secrets",
+    "red-teaming-store",
+    "red-teaming-delivery",
+    "red-teaming-knowledge",
+    "red-teaming-judges[openrouter,openai-compatible]",
+    "red-teaming-target",
+    "red-teaming-catalogue",
+    "red-teaming-probes",
+    "red-teaming-engine",
+]
+
+[project.scripts]
+redteam-runner = "redteam_runner.main:cli"
+
+[tool.uv.sources]
+red-teaming-contracts = { workspace = true }
+red-teaming-settings = { workspace = true }
+red-teaming-secrets = { workspace = true }
+red-teaming-store = { workspace = true }
+red-teaming-delivery = { workspace = true }
+red-teaming-knowledge = { workspace = true }
+red-teaming-judges = { workspace = true }
+red-teaming-target = { workspace = true }
+red-teaming-catalogue = { workspace = true }
+red-teaming-probes = { workspace = true }
+red-teaming-engine = { workspace = true }

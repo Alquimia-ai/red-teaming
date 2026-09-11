@@ -1,0 +1,78 @@
+name: Release Please
+
+# On main only. release-please reads the conventional commits since each component's last release,
+# opens one release pull request per component (api, runner, cli), and when that pull request is
+# merged cuts the tag (`api-v1.2.3`) and the GitHub release. Each release then publishes what the
+# component ships: the two images as packages of this repository on ghcr.io under their version and
+# `latest`, and the command line as a single-file zipapp per platform attached to the release.
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+  packages: write
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    outputs:
+      api--release_created: ${{ steps.release.outputs['apps/api--release_created'] }}
+      api--version: ${{ steps.release.outputs['apps/api--version'] }}
+      runner--release_created: ${{ steps.release.outputs['apps/runner--release_created'] }}
+      runner--version: ${{ steps.release.outputs['apps/runner--version'] }}
+      cli--release_created: ${{ steps.release.outputs['apps/cli--release_created'] }}
+      cli--tag_name: ${{ steps.release.outputs['apps/cli--tag_name'] }}
+    steps:
+      - uses: googleapis/release-please-action@v4
+        id: release
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+  api-image:
+    needs: release-please
+    if: needs.release-please.outputs.api--release_created == 'true'
+    uses: ./.github/workflows/publish-image.yml
+    with:
+      app: api
+      tags: ${{ needs.release-please.outputs.api--version }} latest
+    permissions:
+      contents: read
+      packages: write
+
+  runner-image:
+    needs: release-please
+    if: needs.release-please.outputs.runner--release_created == 'true'
+    uses: ./.github/workflows/publish-image.yml
+    with:
+      app: runner
+      tags: ${{ needs.release-please.outputs.runner--version }} latest
+    permissions:
+      contents: read
+      packages: write
+
+  # One zipapp per platform, because the command line's dependencies carry compiled wheels. Each
+  # file runs with the platform's own Python 3.12: `./redteam-linux-x86_64.pyz --help`.
+  cli-zipapp:
+    needs: release-please
+    if: needs.release-please.outputs.cli--release_created == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest, macos-15-intel]
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv python install 3.12
+      - name: Build the zipapp
+        run: scripts/build_pyz.sh dist
+      - name: Attach it to the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "${{ needs.release-please.outputs.cli--tag_name }}" dist/*.pyz --clobber

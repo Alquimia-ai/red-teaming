@@ -1,0 +1,104 @@
+# The red-teaming platform on one cluster. Defaults are the appliance's -- a single node, MinIO as
+# the store, the API on a NodePort -- and `deploy/cloud/values-*.yaml` override what a managed
+# cluster does differently. Nothing here is a credential: those arrive in Secrets the chart names.
+
+images:
+  # Published as packages of the repository on every push to develop (`develop`, `sha-<7>`) and on
+  # every release (`X.Y.Z`, `latest`). A private repository's packages need `pullSecret`.
+  api: ghcr.io/alquimia-ai/red-teaming-api:latest
+  runner: ghcr.io/alquimia-ai/red-teaming-runner:latest
+  pullPolicy: IfNotPresent
+  # The name of a `kubernetes.io/dockerconfigjson` Secret in the namespace, or empty for public
+  # packages. Set on the API's service account and on every runner Job.
+  pullSecret: ""
+
+api:
+  replicas: 1
+  service:
+    # NodePort is the appliance's door: one node, one address, no ingress controller to run.
+    type: NodePort
+    port: 8080
+    nodePort: 30880
+  ingress:
+    enabled: false
+    className: ""
+    host: red-teaming.example.com
+    annotations: {}
+    tls: []
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { cpu: "1", memory: 1Gi }
+
+runner:
+  # What the API stamps on every Job it creates. The runner is the only process that reaches the
+  # assistant and the models, so it is what carries their credentials -- by reference.
+  backoffLimit: 2
+  ttlSecondsAfterFinished: 86400
+  # The Secret every `secret_ref` a run declares is read from, by key: `TARGET_KEY`,
+  # `OPENROUTER_API_KEY`, `VLLM_API_KEY`, `ALQUIMIA_API_TOKEN`, `BRAIN_REGISTRY_CREDENTIALS`... The
+  # chart creates it from `runner.secrets` when that is non-empty; a deployment that manages the
+  # Secret itself (SOPS, an external secrets operator) leaves `secrets` empty and the name is all
+  # the chart uses.
+  secretName: red-teaming-runner-secrets
+  secrets: {}
+  resources:
+    requests: { cpu: 250m, memory: 512Mi }
+    limits: { cpu: "2", memory: 2Gi }
+
+store:
+  # `s3` against MinIO here, against the provider's own service in the cloud.
+  bucket: red-teaming
+  region: ""
+  # Where the S3 API answers. Empty means the provider's own endpoint (AWS); the in-cluster MinIO
+  # when `minio.enabled`.
+  endpoint: ""
+  # The Secret both the API and every runner read `REDTEAM_S3_ACCESS_KEY` and
+  # `REDTEAM_S3_SECRET_KEY` from, whole. Created by the chart when `minio.enabled` (from
+  # `minio.rootUser`/`rootPassword`) or when `store.accessKey`/`secretKey` are set; empty when the
+  # pods' own identity reaches the store (IRSA, Workload Identity) and nothing needs a key.
+  secretName: red-teaming-store-creds
+  accessKey: ""
+  secretKey: ""
+
+minio:
+  enabled: true
+  # Pinned: the store's append-only guarantee rests on the service honouring `If-None-Match: *`.
+  image: minio/minio:RELEASE.2025-09-07T16-13-09Z
+  mcImage: minio/mc:RELEASE.2025-08-13T08-35-41Z
+  rootUser: redteamadmin
+  rootPassword: redteamadmin
+  storage:
+    className: local-path
+    size: 20Gi
+  resources:
+    requests: { cpu: 250m, memory: 512Mi }
+    limits: { cpu: "2", memory: 2Gi }
+  console:
+    nodePort: 30901
+
+brainRegistry:
+  # The reference the runner resolves a private brain registry's `user:token` from -- a key of the
+  # runner Secret -- and whether the registry may be reached over plain HTTP.
+  secretRef: ""
+  insecure: false
+
+seed:
+  # Publishes the bundles and the prior under `files/seed` once the API answers. A hook, so it runs
+  # on install and on every upgrade; publishing what is already published writes nothing.
+  enabled: true
+  image: python:3.12-slim
+
+receiver:
+  # A webhook receiver for a deployment that wants one inside the cluster -- built from
+  # `deploy/compose/receiver`. Off by default: a real consumer has its own.
+  enabled: false
+  image: ""
+  bucket: red-teaming-deliveries
+
+serviceAccounts:
+  api:
+    name: red-teaming-api
+    annotations: {}
+  runner:
+    name: red-teaming-runner
+    annotations: {}

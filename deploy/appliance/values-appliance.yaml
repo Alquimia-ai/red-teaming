@@ -1,0 +1,31 @@
+# The appliance: one node, k3s, one GPU, MinIO on the node's disk, the API on a NodePort. This is
+# the chart's default shape stated explicitly, plus the two things an appliance always has -- a
+# private package registry to pull from, and the runs' credentials managed with SOPS rather than in
+# values.
+images:
+  pullSecret: red-teaming-registry
+  # Pin a release on the appliance; `latest` is for a lab.
+  # api: ghcr.io/alquimia-ai/red-teaming-api:0.1.0
+  # runner: ghcr.io/alquimia-ai/red-teaming-runner:0.1.0
+
+api:
+  service:
+    type: NodePort
+    nodePort: 30880
+
+runner:
+  # Managed by SOPS: `secrets/runner-secrets.enc.yaml` decrypts to the Secret this names.
+  secretName: red-teaming-runner-secrets
+  secrets: {}
+
+minio:
+  enabled: true
+  storage:
+    className: local-path
+    size: 100Gi
+  console:
+    nodePort: 30901
+
+brainRegistry:
+  secretRef: BRAIN_REGISTRY_CREDENTIALS
+  insecure: false

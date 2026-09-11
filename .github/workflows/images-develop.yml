@@ -1,0 +1,33 @@
+name: Images (develop)
+
+# Every push to develop publishes the two images the platform runs from, as packages of this
+# repository on GitHub's container registry: `ghcr.io/alquimia-ai/red-teaming-api` and
+# `ghcr.io/alquimia-ai/red-teaming-runner`, each under `develop` -- always the newest -- and
+# `sha-<7>`, which names this exact commit for a deployment that wants to pin. Releases are cut on
+# main by release-please and publish version tags there. The workflow's own token pushes; no
+# registry credential lives in the repository.
+on:
+  push:
+    branches: [develop]
+
+concurrency:
+  group: images-develop
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish:
+    strategy:
+      fail-fast: false
+      matrix:
+        app: [api, runner]
+    uses: ./.github/workflows/publish-image.yml
+    with:
+      app: ${{ matrix.app }}
+      tags: develop sha-${{ github.sha }}
+    permissions:
+      contents: read
+      packages: write

@@ -1,233 +1,176 @@
-# CLAUDE.md — Alquimia Red Teaming
+# CLAUDE.md
 
-Guidance for working in this repository. Read this before touching code.
+Red teaming for Alquimia assistants: generate adversarial probes anchored in a knowledge base,
+conduct governed multi-turn conversations against a live assistant, record every conversation as
+immutable evidence, and deliver the attack dataset, the weakness profile, the exploitation report
+and a manifest that says exactly what was planned, what closed and what failed.
 
-## What this project is
+## Status
 
-AI **red teaming for Alquimia agents**: probe already-deployed Alquimia agents as
-black boxes, find the *categories* of realistic interaction that make them violate
-their behavioral contract **reproducibly**, and store every finding as **verifiable
-evidence** in a Boltzmann brain.
+Complete through the first release. What exists, by layer:
 
-The guiding principle comes from the brain itself: **"the brain returns evidence,
-never prose."** A red-teaming result here is not an opinion — it is a graded outcome
-with provenance, reproducible against an immutable snapshot.
+- **Core, no IO**: `contracts` (run spec, plan, trace, manifest, contract, failures, run id),
+  `settings` (`REDTEAM_*`), `secrets` (env, file), `store` (append-only object store over memory
+  and S3, the key layout, sidecars, versioned assets, the resume difference).
+- **Models, knowledge, target**: `judges` (providers `openrouter` and `openai_compatible`, the
+  logprob grader with retries, the stand-in, embeddings), `knowledge` (read-only brain client),
+  `target` (the Alquimia runtime adapter, replay, typed failures, the safe-mode gate).
+- **Generation**: `catalogue` (bundles with the contract sidecar, the construction registry,
+  semantic validation, publishing), `probes` (one run's content-addressed set from a pulled brain).
+- **Conduction**: `engine` (the governed door, conversations an attacker steers inside one
+  exchange, recording, resume by replay, control artifacts, the dataset, `attack`).
+- **Platform**: `dispatch` (docker, Kubernetes Job, subprocess; `launch` and `status`), `delivery`
+  (the bounded, idempotent webhook).
+- **Apps**: `runner` (one run, generation to manifest, exit codes for the platform's retry
+  policy), `api` (the gate, publishing, status from the store and the platform, `stalled`,
+  `resume`), `cli` (`redteam`, argparse and rich, no click; the API as its only door).
+- **Delivery**: images as packages of this repository on every push to `develop` and on every
+  release; release-please on `main`, one release per app; the command line as a zipapp per
+  platform.
+- **Deployment**: the local compose stack; the `red-teaming-stack` and `red-teaming-models` Helm
+  charts; the model and hardware catalog; the appliance (k3s, SOPS/age, one install script); EKS
+  and GKE values.
+- **Tests**: the default tier with the guards; `tests/e2e` in process and in containers
+  (`docker`); `tests/live` against a real assistant and judge (`live`).
 
-## Two packages, one hard boundary
+Keep this file honest: describe what exists, mark what is planned.
 
-This is a **uv workspace** with two members that **never import each other**:
+## Repository structure
 
 ```
-packages/redteam/     the deployable APP (k8s / OpenShift / Railway).
-                      Probes agents, emits findings. Knows NOTHING about the brain.
-
-packages/braintools/  LOCAL brain-curation tooling (wraps the vitruvio CLI).
-                      Never deployed with the app.
+apps/            deployables: api (HTTP gate), runner (one process per run), cli (`redteam`)
+packages/        libraries, import names `redteam_<name>`, distributions `red-teaming-<name>`
+deploy/          compose (local), charts (Helm), catalog (model x hardware), cloud, appliance
+docs/            adr/ (why), architecture/ (what), components/ (how), deploy/ (operate)
+tests/guards/    tests that protect the architecture, not a feature
+scripts/         repository tooling (ADR validator, Dockerfile renderer)
+.claude/skills/  commit, pr, adr, catalogue
 ```
 
-**Why the split:** `redteam` ships as a container to a Kubernetes-style platform, so it
-must stay light and free of brain/vitruvio code. `braintools` is a developer/pipeline
-tool that runs where the brain lives. Keeping brain mechanics out of the app is a
-**hard rule**, enforced structurally by the package boundary — see "Rules" below.
-
-### They meet only at a data boundary
-
-The app reads a **knowledge bundle** and writes a **findings artifact** through ports
-(`redteam.ports`) with file-backed adapters. It does not know what is on the other
-side. `braintools` is what sits on the other side, against the brain:
+Packages and their allowed imports (`tests/guards/test_isolation.py` enforces the graph; a package
+not in its table cannot be imported by anyone):
 
 ```
-                     knowledge.json                       findings.json
-   ┌────────────┐   (documents, cat.,   ┌───────────┐   (FailureReport,   ┌────────────┐
-   │   brain    │──▶  contract)      ──▶ │  redteam  │──▶ RoastDataset)  ──▶│   brain    │
-   │            │   braintools export    │   (app)   │   FileFindingsSink   │            │
-   └────────────┘                        └───────────┘                      └────────────┘
-        ▲ braintools ingest-findings ◀───────────────────────────────────────────┘
+contracts, settings, secrets, delivery -> nothing
+store -> contracts                          dispatch -> contracts, settings, secrets
+knowledge -> contracts   (the only importer of pyboltzmann)
+judges -> contracts      target -> contracts
+catalogue -> contracts, store
+probes -> contracts, store, catalogue, knowledge, judges       probes never imports target
+engine -> contracts, store, catalogue, target, judges          engine never imports knowledge or probes
+api -> contracts, settings, secrets, store, dispatch, catalogue
+runner -> composes probes and engine (the only place both meet)
+cli -> contracts
 ```
 
-- **In**: `redteam.ports.FileKnowledgeSource` reads `knowledge.json` (a mounted volume
-  / ConfigMap). Upstream, `braintools` produces it from the brain.
-- **Out**: `redteam.ports.FileFindingsSink` writes `findings.json`. Downstream,
-  `braintools ingest-findings` puts it back into the brain as evidence.
-
-The boundary is **data**, never a code dependency. `catalogue` and `contract` cross it
-as opaque JSON so the app doesn't couple to gaussia's schema either.
-
-## The pieces (know where they live)
-
-| Piece         | What it is                              | Where |
-|---------------|-----------------------------------------|-------|
-| **redteam**   | The deployable red-teaming app          | `packages/redteam/` |
-| **braintools**| Brain-curation CLI (wraps vitruvio)     | `packages/braintools/` |
-| **vitruvio**  | Boltzmann Brain runtime **CLI** (v0.3.x, third party) | https://github.com/getsfumato/vitruvio |
-| **pyboltzmann** | Boltzmann Protocol **SDK** (Python)   | https://github.com/gaussia-labs/pyboltzmann |
-| **gaussia / RoastMe** | Eval framework + adversarial search | `/Users/leonardoleenen/projects/gaussia/code/pygaussia` (branch `develop`) |
-| **Alquimia agents** | Targets under test (HTTP API)     | `alquimia-core` / `alquimia-runtime` |
-
-## Setup
+## Commands
 
 ```bash
-uv sync                              # both packages (dev)
-uv sync --extra roast                # + RoastMe (heavy: torch, sentence-transformers)
-
-# vitruvio is used by braintools only. It is NOT on PyPI — install with the official
-# script (fetches release wheels, does `uv tool install`, lands at ~/.local/bin):
-#   curl -fsSL https://raw.githubusercontent.com/getsfumato/vitruvio/main/install.sh | sh
-#   vitruvio --version   # expect 0.3.x
+uv sync --all-packages                                  # one environment for the workspace
+uv run ruff check . && uv run ruff format --check .
+uv run mypy packages apps tests
+uv run pytest -q -m "not live and not docker and not k8s" # default tier, includes tests/guards
+python3 scripts/validate_adrs.py                        # what CI runs on docs/adr
+uv run python scripts/render_dockerfiles.py             # regenerate apps/*/Dockerfile (--check in CI)
+uv run redteam-runner run <run_id> [--dry-run]          # one run, against the configured store
+uv run redteam-api                                      # the gate on :8080
+uv run pytest -q tests/e2e                              # the platform in one process
+uv run redteam init && uv run redteam local up --build  # the local stack (docs/deploy/local.md)
+uv run pytest -m docker tests/e2e/test_compose.py       # the stack in containers, via the cli
+scripts/build_pyz.sh dist                               # the cli as one file: dist/redteam-<os>-<arch>.pyz
+helm lint deploy/charts/red-teaming-stack               # the charts (helm on the PATH; CI installs it)
+sudo deploy/appliance/install.sh                        # the appliance, end to end (docs/deploy/appliance.md)
+npm ci && pre-commit install --hook-type commit-msg      # commitlint on every commit
 ```
 
-Python **3.13**, managed with **uv**. Do not use pip/poetry.
+Test tiers: default (nothing needed) · `docker` (daemon) · `k8s` (cluster) · `live` (real
+assistant or model provider; costs money).
 
-> Known gap: the `roast` extra points at gaussia's `roastme` extras, which the released
-> `gaussia` on PyPI (1.0.0) does not expose — those live in the `pygaussia` `develop`
-> branch. Resolve the source when implementing `roast` (install gaussia from that repo).
+## Invariants
 
-## The two CLIs
+- **The API never reaches the assistant or a model.** It validates, freezes, launches, reads.
+- **The runner is one process per run.** Two runners on one run would attack the assistant twice;
+  the platform's unique naming refuses the second.
+- **Generation never reaches the assistant; conduction never reads the knowledge base.** Package
+  boundary, guarded by imports. The runner is where they are composed.
+- **The store is append-only.** Every key under `runs/{run_id}/` is written once, when the thing
+  it records can no longer change. There is no `delete`, and no cache is rewritten in place.
+- **Identity derives from content.** A probe's id from what built it; an attack's id from the
+  probe and its parameters; the probe set's digest from the sorted set. Nothing in an identity
+  depends on when it ran, or resumption silently repeats the whole run.
+- **Never the same piece generates and judges.** The control judge that steers conduction is not
+  the generator, and neither one is the assistant.
+- **Models are configuration, never code.** Model ids arrive in the run spec by role; the code
+  names providers, never models.
+- **Credentials travel by reference.** A spec carries `secret_ref` names; the API resolves them
+  and forwards only what the spec declared. Names starting with `REDTEAM_` are reserved.
+- **A transport failure is a typed record, never a closed unit.** A failed exchange is recorded
+  with its kind and retried or given up by policy; it is never graded as an answer.
 
-### `redteam` (the app) — `packages/redteam/`
+## Vocabulary
 
-```bash
-uv run redteam check --knowledge ./data/knowledge.json   # validate input boundary
-uv run redteam roast                                     # [roadmap] run RoastMe, emit findings
-```
+Use these words, in this sense, everywhere -- code, docs, commits:
 
-Env: `ALQUIMIA_AGENT_BASE_URL`, `ALQUIMIA_AGENT_TOKEN` (agent under test),
-`REDTEAM_KNOWLEDGE_PATH` (in), `REDTEAM_FINDINGS_PATH` (out). No brain env exists here.
+| Term | Meaning |
+|---|---|
+| **run** | One accepted request, frozen as `spec.json`, executed by one runner. |
+| **catalogue** | A versioned bundle: `catalogue.json` (plugins and strategies) with its sidecars `contract.json`, `grounding.json`, `delivery.json`. |
+| **plugin** | A risk family: what is tested, and which principle of the contract it charges. |
+| **strategy** | How a probe is built: entity kind, construction (transform), documented or invented premise, phrasing. |
+| **construction** | The code a strategy's `transform` key resolves to: deterministic (`swap_token`, `shift_figure`, `shift_date`) or model-driven (`contextual_sibling`). |
+| **delivery** | How a probe reaches the assistant: one turn, or a conversation an attacker steers. |
+| **contract** | The behavioural contract the assistant is held to: principles with weights and rubrics, plus verdict tokens. Travels inside the catalogue bundle. |
+| **principle** | One rule of the contract, graded by the control judge. |
+| **knowledge base** | The Boltzmann brain a run's probes are anchored in, pinned by OCI digest. Read-only. |
+| **probe** | One generated query with its knowledge hook (documented or invented, and the block it cites). |
+| **work unit** | One replica of one attack: the smallest thing that produces a complete trace. |
+| **attack** | A probe with its attack parameters; `attack_id` is their hash. |
+| **replica** | The n-th execution of an attack; the denominator of every count. |
+| **trace** | The immutable record of one conducted conversation, all turns included. |
+| **attacker** | The model that writes the follow-up turns of a conducted conversation. |
+| **control judge** | The grader that scores exchanges inside the run to steer it; its output is a control artifact. |
+| **profile** | The weakness profile the Profiler returns; persisted as `profile.json`. |
+| **exploitation report** | The Exploiter's ranked categories and threshold queries; persisted as `exploit.json`. |
+| **dataset** | The attack dataset assembled per replica from traces and control grades. |
+| **manifest** | The single file that closes a run: digests, coverage (planned, closed, failed), components used. |
+| **target** | The assistant under test, reached only through the governed door. |
 
-### `braintools` (curation) — `packages/braintools/`
+## Conventions
 
-```bash
-uv run braintools init --actor curator --actor-kind human
-uv run braintools ingest ./policy.pdf --proposer anthropic   # ONE file
-uv run braintools index
-uv run braintools search "refund policy" -n 5
-uv run braintools browse
-uv run braintools ingest-findings ./data/findings.json       # the boundary, brain side
-uv run braintools spar "<title>" --author leo               # scaffold a sparring source doc
-uv run braintools seed                                       # rebuild brain from docs/sources/*
-uv run braintools publish v1                                 # dist push + write brain.lock
-uv run braintools pull                                       # install pinned brain + verify
-```
+- Commits: Conventional Commits with a mandatory scope (`commitlint.config.js`); use `/commit`.
+  No attribution trailers of any kind. A `feat` bumps an app's minor version, a `fix` its patch;
+  what a commit touches decides which apps it releases (`release-please-config.json`,
+  `include-paths` held to the dependency closure by a guard).
+- Pull requests target `develop`; use `/pr`. `main` receives promotions from `develop` only, and
+  release-please runs there alone (`docs/release.md`).
+- Decisions that cannot be inferred from code are ADRs (`/adr`); CI validates their shape.
+- Python 3.12, `uv` for everything, ruff and mypy strict configured once at the root.
+- Tests live beside their package (`packages/<name>/tests/`) or under `tests/` for cross-cutting
+  tiers (`guards/`, `e2e/`, `live/`).
 
-Env: `BRAINTOOLS_BRAIN_DIR` (default `./brain`, → vitruvio's `--brain`),
-`BRAINTOOLS_VITRUVIO_BIN`.
+## Guards
 
-Every data command runs vitruvio with `--json` and parses its **envelope**
-(`{"ok", "data", "warnings", "error", ...}`). vitruvio reports failures *inside* the
-envelope (`ok: false`) while exiting 0, so success is decided by `ok`, not the exit
-code: on `ok: false` the wrapper raises with `code: message` + `hint`; on success it
-emits `data` and echoes `warnings` to stderr.
+| Guard | Protects |
+|---|---|
+| `tests/guards/test_vocabulary.py` | The repository's vocabulary: unrelated project names never appear in content or paths |
+| `tests/guards/test_scopes.py` | Every workspace member has a commit scope |
+| `tests/guards/test_isolation.py` | The import graph above; `pyboltzmann` is imported only by `knowledge` |
+| `tests/guards/test_no_delete.py` | The store interface has no `delete` and nothing calls one |
+| `tests/guards/test_no_hardcoded_models.py` | No model id or provider URL is bound in code; models arrive in the spec |
+| `tests/guards/test_no_ambient_credentials.py` | The model-facing surface never reads the process environment |
+| `tests/guards/test_no_status_literals.py` | No HTTP status is compared to a number; failures are classified by name |
+| `tests/guards/test_inference_only.py` | The training stack is absent; the exploiter's search cannot train |
+| `tests/guards/test_dockerfiles.py` | Every app's Dockerfile is exactly what its workspace closure renders to |
+| `tests/guards/test_image_closure.py` | What an image carries is a property of the graph: the runner serves no HTTP; the API reaches no assistant, model or brain |
+| `tests/guards/test_release_closure.py` | A component's `include-paths` are its dependency closure; the manifest and the pyprojects agree on versions |
+| `tests/guards/test_charts.py` | The charts render with every values file; what they render is what the dispatcher and the seed expect; the seed the chart carries is the seed |
+| `packages/contracts/tests/test_plan_determinism.py` | Work-unit keys derive from the plan alone, across processes |
 
-## Distributing the brain (collaborators)
+## Skills
 
-The brain is **data, not code** — never commit `./brain/` to git (5 MB of binary
-content-addressed blobs + rebuildable indices; a Merkle DAG that git cannot 3-way
-merge). It is distributed two complementary ways ("hybrid"):
-
-1. **Reproducible from source** — committed documents under `docs/sources/`, one
-   subdirectory per subject (`roastme/` = curated corpus, `sparring/` = findings).
-   Rebuild the whole brain deterministically, offline, no registry:
-   ```bash
-   uv run braintools seed        # ingest every source (LaTeX via pandoc) + build indices
-   ```
-   Each block is tagged with its subdirectory's name as subject. Requires `pandoc` for
-   `.tex`. Deterministic because it uses the `structure` proposer (a model proposer is
-   not); note that seed reproduces the *knowledge* (canonical/semantic roots match across
-   collaborators) but each run stamps its own provenance.
-
-   **Capturing sparring as source.** Interactive sparring / red-teaming findings become
-   reproducible, git-shared knowledge only if written as source docs. Convention:
-   ```bash
-   uv run braintools spar "prompt injection via tool args" --author leo --target alquimia-core
-   # fill in the scaffolded docs/sources/sparring/YYYY-MM-DD-<author>-<slug>.md, then:
-   git add docs/sources/sparring/ && git commit && git push
-   uv run braintools seed        # ingests it under subject "sparring"
-   ```
-   Use this (seed path) for document-shaped, deterministic knowledge. Non-deterministic
-   or model-extracted operational knowledge belongs in the registry path instead.
-
-2. **OCI registry (ghcr.io)** — publish once, pull read-only. The brain already is an
-   OCI layout, so this is native:
-   ```bash
-   # curator (needs a GitHub PAT with write:packages):
-   vitruvio registry login ghcr.io          # username + PAT
-   uv run braintools publish v1             # dist push + writes brain.lock
-
-   # collaborator (read:packages, or public):
-   uv run braintools pull                   # reads brain.lock, installs, verifies
-   ```
-   `registry.reference` defaults to `ghcr.io/alquimia-ai/red-teaming-brain`
-   (`braintools.config.DEFAULT_REGISTRY`, override with `$BRAINTOOLS_REGISTRY`).
-
-**`brain.lock`** (committed, at repo root) is the pin: `{reference, tag, digest}`.
-`publish` writes it; `pull` with no args reads it so everyone installs the exact same
-verified version. It appears after the first real publish.
-
-Credentials never touch the repo — they live in vitruvio's credential store
-(`vitruvio registry login`) or the environment. `vitruvio.toml` stays gitignored (local
-state); the registry reference is carried by braintools' default instead.
-
-Test the whole loop offline with a filesystem registry (no network/creds):
-`braintools publish v1 --local /tmp/reg` then `braintools pull --local /tmp/reg`.
-
-## Layout
-
-```
-red-teaming/
-├── CLAUDE.md
-├── pyproject.toml                 # uv workspace root (virtual; builds nothing)
-├── packages/
-│   ├── redteam/                   # the deployable app
-│   │   ├── pyproject.toml         # alquimia-redteam; `roast`/`roast-rl` extras
-│   │   ├── Dockerfile             # builds ONLY this package
-│   │   └── src/redteam/
-│   │       ├── cli.py             # check + roast
-│   │       ├── ports.py           # KnowledgeSource / FindingsSink + file adapters
-│   │       ├── targets.py         # TargetAssistant HTTP adapter (Alquimia agent)
-│   │       └── config.py          # agent endpoint + boundary paths (NO brain)
-│   └── braintools/                # brain-curation tooling
-│       ├── pyproject.toml         # alquimia-braintools
-│       └── src/braintools/
-│           ├── cli.py             # brain commands + ingest-findings
-│           ├── vitruvio.py        # subprocess wrapper over the vitruvio CLI
-│           └── config.py          # brain dir + vitruvio bin
-└── brain/                         # brain DATA (gitignored; `braintools init`)
-```
-
-## Rules
-
-- **The app never touches the brain.** `packages/redteam/` must not import `braintools`,
-  `pyboltzmann`, or reference vitruvio/brain paths. The only way in/out is
-  `redteam.ports`. If you feel the urge to add brain logic to the app, you are on the
-  wrong side of the boundary — put it in `braintools` and pass data across.
-  Quick check:  `grep -rniE 'vitruvio|braintools|boltzmann' packages/redteam/src`
-  should match only comments that say the app doesn't use them.
-- **uv for everything**: `uv run redteam …`, `uv run braintools …`, `uv run pytest`,
-  `uv run ruff check .`.
-- **Evidence, not prose**: commands emit structured JSON. Human formatting is a
-  presentation layer, never the source of truth.
-- **vitruvio is the boundary to the brain** (inside braintools): all brain mutations go
-  through the vitruvio CLI; surface its errors, don't swallow them.
-- **Targets are black boxes**: the agent is reached only through `redteam.targets`.
-  Config from env; never hardcode endpoints.
-- **Contracts & catalogues are inputs, not constants.** RoastMe ships neither on
-  purpose — a shipped one would become a standard nobody chose. They enter the app as
-  part of the knowledge bundle.
-
-## Testing
-
-```bash
-uv run pytest            # both packages; no brain, network, or vitruvio needed
-uv run ruff check .
-```
-
-`braintools` tests drive the vitruvio wrapper against a fake subprocess runner.
-`redteam` tests exercise the ports with temp files. End-to-end brain flows are verified
-manually with a scratch brain.
-
-## Safety & scope
-
-This is **authorized defensive security work**: red teaming Alquimia's own agents to
-find and document failures before release. RoastMe numbers are **judge-only
-measurements** — one model's estimate of whether another misbehaved — so read a
-violation rate as *evidence to look at*, never as a calibrated error rate.
+| Skill | Use when |
+|---|---|
+| `/commit` | Changes are ready to be committed |
+| `/pr` | A branch is ready for review against `develop` |
+| `/adr` | A decision about the system was made |
+| `/catalogue` | Authoring or fixing a catalogue bundle (plugins, strategies, contract, grounding, delivery) |

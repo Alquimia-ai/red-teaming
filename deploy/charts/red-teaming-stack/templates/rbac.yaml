@@ -1,0 +1,38 @@
+# Exactly what the API's dispatcher does with the cluster: create one Job per run, read a Job's
+# status for a run's liveness, and read pods and their logs so an operator can be handed a runner's
+# log through the API later. Namespaced: the API never reaches outside its own namespace.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: red-teaming-api
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: red-teaming-api
+    {{- include "red-teaming.labels" . | nindent 4 }}
+rules:
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["create", "get", "list", "watch", "delete"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list"]
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: red-teaming-api
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: red-teaming-api
+    {{- include "red-teaming.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: red-teaming-api
+subjects:
+  - kind: ServiceAccount
+    name: {{ .Values.serviceAccounts.api.name }}
+    namespace: {{ .Release.Namespace }}
