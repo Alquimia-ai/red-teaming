@@ -1,8 +1,11 @@
 name: Images (develop)
 
-# Every push to develop publishes the two images the platform runs from, under two tags: `develop`,
-# which always points at the newest, and `sha-<7>`, which names this exact commit for a deployment
-# that wants to pin. Releases are cut on main by release-please and publish version tags there.
+# Every push to develop publishes the two images the platform runs from, as packages of this
+# repository on GitHub's container registry: `ghcr.io/alquimia-ai/red-teaming-api` and
+# `ghcr.io/alquimia-ai/red-teaming-runner`, each under `develop` -- always the newest -- and
+# `sha-<7>`, which names this exact commit for a deployment that wants to pin. Releases are cut on
+# main by release-please and publish version tags there. The workflow's own token pushes; no
+# registry credential lives in the repository.
 on:
   push:
     branches: [develop]
@@ -11,62 +14,20 @@ concurrency:
   group: images-develop
   cancel-in-progress: false
 
+permissions:
+  contents: read
+  packages: write
+
 jobs:
-  sha:
-    runs-on: ubuntu-latest
-    outputs:
-      short: ${{ steps.short.outputs.short }}
-    steps:
-      - id: short
-        run: echo "short=sha-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
-
-  # The reusable workflow takes one tag per call, so each image is pushed twice.
-  api-develop:
-    uses: Alquimia-ai/infra-workflows/.github/workflows/docker-build-push.yml@main
+  publish:
+    strategy:
+      fail-fast: false
+      matrix:
+        app: [api, runner]
+    uses: ./.github/workflows/publish-image.yml
     with:
-      image_name: alquimiaai/red-teaming-api
-      image_tag: develop
-      context: .
-      dockerfile: apps/api/Dockerfile
-      platforms: linux/amd64,linux/arm64
-    secrets:
-      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
-
-  api-sha:
-    needs: sha
-    uses: Alquimia-ai/infra-workflows/.github/workflows/docker-build-push.yml@main
-    with:
-      image_name: alquimiaai/red-teaming-api
-      image_tag: ${{ needs.sha.outputs.short }}
-      context: .
-      dockerfile: apps/api/Dockerfile
-      platforms: linux/amd64,linux/arm64
-    secrets:
-      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
-
-  runner-develop:
-    uses: Alquimia-ai/infra-workflows/.github/workflows/docker-build-push.yml@main
-    with:
-      image_name: alquimiaai/red-teaming-runner
-      image_tag: develop
-      context: .
-      dockerfile: apps/runner/Dockerfile
-      platforms: linux/amd64,linux/arm64
-    secrets:
-      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
-
-  runner-sha:
-    needs: sha
-    uses: Alquimia-ai/infra-workflows/.github/workflows/docker-build-push.yml@main
-    with:
-      image_name: alquimiaai/red-teaming-runner
-      image_tag: ${{ needs.sha.outputs.short }}
-      context: .
-      dockerfile: apps/runner/Dockerfile
-      platforms: linux/amd64,linux/arm64
-    secrets:
-      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+      app: ${{ matrix.app }}
+      tags: develop sha-${{ github.sha }}
+    permissions:
+      contents: read
+      packages: write
