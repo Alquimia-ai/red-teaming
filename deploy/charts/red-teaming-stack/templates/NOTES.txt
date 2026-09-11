@@ -1,0 +1,20 @@
+red-teaming is installed in namespace {{ .Release.Namespace }}.
+
+The API:
+{{- if eq .Values.api.service.type "NodePort" }}
+  http://<node-ip>:{{ .Values.api.service.nodePort }}/healthz
+{{- else if .Values.api.ingress.enabled }}
+  https://{{ .Values.api.ingress.host }}/healthz
+{{- else }}
+  kubectl -n {{ .Release.Namespace }} port-forward svc/red-teaming-api {{ .Values.api.service.port }}:{{ .Values.api.service.port }}
+{{- end }}
+
+Every run the API accepts becomes one Job in this namespace, from {{ .Values.images.runner }}, with
+the run's credentials read by reference from the Secret {{ .Values.runner.secretName }}. Put the keys
+the runs will name in it -- TARGET_KEY, VLLM_API_KEY, OPENROUTER_API_KEY, ALQUIMIA_API_TOKEN -- and
+watch a run with:
+
+  kubectl -n {{ .Release.Namespace }} get jobs -l app.kubernetes.io/name=red-teaming-runner
+  kubectl -n {{ .Release.Namespace }} logs job/redteam-run-<run-id>
+
+From a workstation: redteam init --api-url http://<node-ip>:{{ .Values.api.service.nodePort }}
