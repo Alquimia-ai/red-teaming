@@ -1342,7 +1342,7 @@ wheels = [
 
 [[package]]
 name = "red-teaming-api"
-version = "0.1.0"
+version = "0.0.0"
 source = { editable = "apps/api" }
 dependencies = [
     { name = "fastapi" },
@@ -1396,13 +1396,13 @@ requires-dist = [
 
 [[package]]
 name = "red-teaming-cli"
-version = "0.1.0"
+version = "0.0.0"
 source = { editable = "apps/cli" }
 dependencies = [
     { name = "httpx" },
     { name = "pydantic" },
     { name = "red-teaming-contracts" },
-    { name = "typer" },
+    { name = "rich" },
 ]
 
 [package.metadata]
@@ -1410,7 +1410,7 @@ requires-dist = [
     { name = "httpx", specifier = ">=0.28" },
     { name = "pydantic", specifier = ">=2.9" },
     { name = "red-teaming-contracts", editable = "packages/contracts" },
-    { name = "typer", specifier = ">=0.15" },
+    { name = "rich", specifier = ">=13.0" },
 ]
 
 [[package]]
@@ -1559,7 +1559,7 @@ requires-dist = [
 
 [[package]]
 name = "red-teaming-runner"
-version = "0.1.0"
+version = "0.0.0"
 source = { editable = "apps/runner" }
 dependencies = [
     { name = "red-teaming-catalogue" },
@@ -1573,7 +1573,6 @@ dependencies = [
     { name = "red-teaming-settings" },
     { name = "red-teaming-store" },
     { name = "red-teaming-target" },
-    { name = "typer" },
 ]
 
 [package.metadata]
@@ -1589,7 +1588,6 @@ requires-dist = [
     { name = "red-teaming-settings", editable = "packages/settings" },
     { name = "red-teaming-store", editable = "packages/store" },
     { name = "red-teaming-target", editable = "packages/target" },
-    { name = "typer", specifier = ">=0.15" },
 ]
 
 [[package]]

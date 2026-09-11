@@ -10,7 +10,7 @@ packages = ["src/redteam_runner"]
 
 [project]
 name = "red-teaming-runner"
-version = "0.1.0"
+version = "0.0.0"
 description = "The runner: one run, from generation to manifest, in one process; then exit."
 requires-python = ">=3.12,<3.14"
 dependencies = [
@@ -25,7 +25,6 @@ dependencies = [
     "red-teaming-catalogue",
     "red-teaming-probes",
     "red-teaming-engine",
-    "typer>=0.15",
 ]
 
 [project.scripts]

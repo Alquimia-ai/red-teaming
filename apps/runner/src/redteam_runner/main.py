@@ -1,32 +1,38 @@
-"""The runner's command line: `redteam-runner run <run_id>`.
+"""The runner's command line: `redteam-runner run <run_id> [--dry-run]`.
 
 One subcommand, and the grammar is pinned on purpose: the dispatchers hand the image `["run",
-<id>]`, so a change here is a container that starts and dies.
+<id>]`, so a change here is a container that starts and dies. Standard library only -- this is a
+job's entrypoint, not a tool a person types into.
 """
 
 from __future__ import annotations
 
+import argparse
 import sys
+from collections.abc import Sequence
 
-import typer
+NOTHING_TO_RESUME = 2
+"""The exit for a launch the API never accepted: an id outside the rule, or no frozen spec. Said
+plainly and exited as "nothing to resume" rather than as a failed attempt."""
 
-cli_app = typer.Typer(add_completion=False, help="Run one red-teaming run to completion.")
-
-
-@cli_app.callback()
-def _root() -> None:
-    """Keep `run` an explicit subcommand.
-
-    Typer promotes a lone command to the default one, which silently changes the argument
-    grammar: `redteam-runner run <id>` then parses "run" as the run id and the id as a stray extra.
-    A callback pins the grammar, which matters because every dispatcher's command is written
-    against it.
-    """
+FAILED = 1
+"""Non-zero so the platform's retry policy -- a Job's backoffLimit -- sees a failed execution and
+relaunches. The relaunch resumes from the difference; nothing closed is re-executed. Exiting 0 here
+would report a failed run as a successful job, and no retry would come."""
 
 
-@cli_app.command()
-def run(run_id: str, dry_run: bool = False) -> None:
-    """Execute the run named by `run_id`, resuming whatever is already in the store."""
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="redteam-runner", description="Run one red-teaming run to completion."
+    )
+    commands = parser.add_subparsers(dest="command", metavar="command", required=True)
+    run = commands.add_parser("run", help="execute the run, resuming whatever the store holds")
+    run.add_argument("run_id")
+    run.add_argument("--dry-run", action="store_true", help="read the spec and do nothing")
+    return parser
+
+
+def main(argv: Sequence[str] | None = None) -> int:
     from redteam_contracts.manifest import RunPhase
     from redteam_contracts.run_id import check
     from redteam_runner.pipeline import execute
@@ -35,40 +41,38 @@ def run(run_id: str, dry_run: bool = False) -> None:
     from redteam_store.interface import ObjectNotFound
 
     try:
-        check(run_id)
-    except ValueError as refused:
-        # The gate already refused this shape, so reaching here means a launch that bypassed the
-        # API. Said plainly and exited as "nothing to resume" rather than as a failed attempt.
-        typer.echo(str(refused))
-        raise typer.Exit(code=2) from None
-
-    settings = load()
-    typer.echo(
-        f"run {run_id}: store={settings.store_backend.value} "
-        f"secrets={settings.secrets_backend.value}"
-    )
+        args = build_parser().parse_args(argv)
+    except SystemExit as parsed:
+        return int(parsed.code or 0)
 
     try:
-        outcome = execute(run_id, settings=settings, dry_run=dry_run)
-    except ObjectNotFound:
-        typer.echo(f"no frozen spec at {layout.spec(run_id)}; the API has not accepted this run")
-        raise typer.Exit(code=2) from None
+        check(args.run_id)
+    except ValueError as refused:
+        print(refused)
+        return NOTHING_TO_RESUME
 
-    typer.echo(
-        f"run {run_id}: {outcome.phase.value}, {outcome.n_traces} traces closed, "
+    settings = load()
+    print(
+        f"run {args.run_id}: store={settings.store_backend.value} "
+        f"secrets={settings.secrets_backend.value}"
+    )
+    try:
+        outcome = execute(args.run_id, settings=settings, dry_run=args.dry_run)
+    except ObjectNotFound:
+        print(f"no frozen spec at {layout.spec(args.run_id)}; the API has not accepted this run")
+        return NOTHING_TO_RESUME
+
+    print(
+        f"run {args.run_id}: {outcome.phase.value}, {outcome.n_traces} traces closed, "
         f"{outcome.resumed} of them before this attempt"
         + (f"; webhook {type(outcome.delivery).__name__}" if outcome.delivery else "")
     )
-    if outcome.phase is RunPhase.FAILED:
-        # Non-zero so the platform's retry policy -- a Job's backoffLimit -- sees a failed execution
-        # and relaunches. The relaunch resumes from the difference; nothing closed is re-executed.
-        # Exiting 0 here would report a failed run as a successful job, and no retry would come.
-        raise typer.Exit(code=1)
+    return FAILED if outcome.phase is RunPhase.FAILED else 0
 
 
 def cli() -> None:
-    cli_app()
+    sys.exit(main())
 
 
 if __name__ == "__main__":
-    sys.exit(cli_app())
+    sys.exit(main())

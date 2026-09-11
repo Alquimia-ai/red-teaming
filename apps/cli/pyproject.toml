@@ -16,14 +16,14 @@ packages = ["src/redteam_cli"]
 
 [project]
 name = "red-teaming-cli"
-version = "0.1.0"
+version = "0.0.0"
 description = "The `redteam` command line: a workspace, the local stack, catalogue publishing and run governance through the API."
 requires-python = ">=3.12,<3.14"
 dependencies = [
     "red-teaming-contracts",
     "httpx>=0.28",
     "pydantic>=2.9",
-    "typer>=0.15",
+    "rich>=13.0",
 ]
 
 [project.scripts]

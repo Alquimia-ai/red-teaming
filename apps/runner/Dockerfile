@@ -11,6 +11,10 @@
 # convention.
 FROM python:3.12-slim
 
+LABEL org.opencontainers.image.source="https://github.com/Alquimia-ai/red-teaming" \
+      org.opencontainers.image.title="red-teaming-runner" \
+      org.opencontainers.image.description="The red-teaming runner: one run, from generation to manifest"
+
 ENV PYTHONUNBUFFERED=1 \
     UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy

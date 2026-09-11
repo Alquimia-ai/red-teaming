@@ -47,7 +47,7 @@ def _dispatcher(server: _ApiServer, **overrides: Any) -> K8sJobDispatcher:
         "ttl_seconds": 3600,
     }
     options.update(overrides)
-    return K8sJobDispatcher("alquimiaai/red-teaming-runner:1.0.0", **options)
+    return K8sJobDispatcher("ghcr.io/alquimia-ai/red-teaming-runner:1.0.0", **options)
 
 
 def test_a_launch_submits_one_job_named_for_the_run() -> None:
@@ -70,7 +70,7 @@ def test_a_launch_submits_one_job_named_for_the_run() -> None:
     assert pod["restartPolicy"] == "Never"
     assert pod["serviceAccountName"] == "red-teaming-runner"
     [container] = pod["containers"]
-    assert container["image"] == "alquimiaai/red-teaming-runner:1.0.0"
+    assert container["image"] == "ghcr.io/alquimia-ai/red-teaming-runner:1.0.0"
     assert container["args"] == ["run", "run-1"], "the image's entrypoint is the runner"
     assert container["envFrom"] == [{"configMapRef": {"name": "runner-config"}}]
     assert handle.identifier == "uid-1" and handle.backend == "k8s_job"

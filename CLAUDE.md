@@ -33,8 +33,14 @@ operator's side: `apps/cli` (`redteam init | local up|down|status|logs | catalog
 `.redteam/` workspace, the API as its only door) and `deploy/compose` (minio, the API, the seed, a
 receiver that keeps what it acknowledges, a mock assistant speaking the runtime's inference API;
 the runner created per run through the socket), with `tests/e2e/test_compose.py` (tier `docker`)
-driving the containers through the command line. Images and releases land next. Keep this file
-honest: describe what exists, mark what is planned.
+driving the containers through the command line -- and delivery: every push to `develop`
+publishes `ghcr.io/alquimia-ai/red-teaming-{api,runner}` -- packages of this repository -- as
+`develop` and `sha-<7>`; on `main`,
+release-please opens one release pull request per app (`api`, `runner`, `cli`), tags
+`<app>-vX.Y.Z`, publishes the images under the version and `latest`, and attaches the command
+line as a zipapp per platform (`scripts/build_pyz.sh`). The command line is parsed with the
+standard library and rendered with rich; it carries no click. Deployment charts and the final
+documentation land next. Keep this file honest: describe what exists, mark what is planned.
 
 ## Repository structure
 
@@ -78,6 +84,7 @@ uv run redteam-api                                      # the gate on :8080
 uv run pytest -q tests/e2e                              # the platform in one process
 uv run redteam init && uv run redteam local up --build  # the local stack (docs/deploy/local.md)
 uv run pytest -m docker tests/e2e/test_compose.py       # the stack in containers, via the cli
+scripts/build_pyz.sh dist                               # the cli as one file: dist/redteam-<os>-<arch>.pyz
 npm ci && pre-commit install --hook-type commit-msg      # commitlint on every commit
 ```
 
@@ -136,8 +143,11 @@ Use these words, in this sense, everywhere -- code, docs, commits:
 ## Conventions
 
 - Commits: Conventional Commits with a mandatory scope (`commitlint.config.js`); use `/commit`.
-  No attribution trailers of any kind.
-- Pull requests target `develop`; use `/pr`. `main` receives promotions from `develop` only.
+  No attribution trailers of any kind. A `feat` bumps an app's minor version, a `fix` its patch;
+  what a commit touches decides which apps it releases (`release-please-config.json`,
+  `include-paths` held to the dependency closure by a guard).
+- Pull requests target `develop`; use `/pr`. `main` receives promotions from `develop` only, and
+  release-please runs there alone (`docs/release.md`).
 - Decisions that cannot be inferred from code are ADRs (`/adr`); CI validates their shape.
 - Python 3.12, `uv` for everything, ruff and mypy strict configured once at the root.
 - Tests live beside their package (`packages/<name>/tests/`) or under `tests/` for cross-cutting
@@ -157,9 +167,8 @@ Use these words, in this sense, everywhere -- code, docs, commits:
 | `tests/guards/test_inference_only.py` | The training stack is absent; the exploiter's search cannot train |
 | `tests/guards/test_dockerfiles.py` | Every app's Dockerfile is exactly what its workspace closure renders to |
 | `tests/guards/test_image_closure.py` | What an image carries is a property of the graph: the runner serves no HTTP; the API reaches no assistant, model or brain |
+| `tests/guards/test_release_closure.py` | A component's `include-paths` are its dependency closure; the manifest and the pyprojects agree on versions |
 | `packages/contracts/tests/test_plan_determinism.py` | Work-unit keys derive from the plan alone, across processes |
-
-The release-closure guard arrives with the release configuration it checks.
 
 ## Skills
 
