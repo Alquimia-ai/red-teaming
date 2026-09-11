@@ -1,0 +1,137 @@
+{{- range $name, $spec := .Values.models }}
+{{- if ne (default true $spec.enabled) false }}
+{{- $d := $.Values.defaults }}
+{{- $task := default $d.task $spec.task }}
+{{- $port := default $d.port $spec.port }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: {{ $name }}
+    app.kubernetes.io/component: model
+    app.kubernetes.io/part-of: red-teaming
+    app.kubernetes.io/managed-by: {{ $.Release.Service }}
+    app.kubernetes.io/instance: {{ $.Release.Name }}
+    red-teaming.alquimia.ai/served-model: {{ default $spec.path $spec.servedModelName | quote }}
+    red-teaming.alquimia.ai/task: {{ $task }}
+spec:
+  replicas: 1
+  # A GPU is not shared between an old and a new pod: the old one goes first.
+  strategy: { type: Recreate }
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ $name }}
+      app.kubernetes.io/instance: {{ $.Release.Name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ $name }}
+        app.kubernetes.io/component: model
+        app.kubernetes.io/part-of: red-teaming
+        app.kubernetes.io/instance: {{ $.Release.Name }}
+    spec:
+      {{- with $.Values.runtimeClassName }}
+      runtimeClassName: {{ . }}
+      {{- end }}
+      {{- with $.Values.image.pullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: vllm
+          image: "{{ $.Values.image.repository }}:{{ $.Values.image.tag }}"
+          imagePullPolicy: {{ $.Values.image.pullPolicy }}
+          args:
+            - "--model"
+            - "/models/{{ required (printf "models.%s.path is required" $name) $spec.path }}"
+            - "--served-model-name"
+            - {{ default $spec.path $spec.servedModelName | quote }}
+            - "--host"
+            - "0.0.0.0"
+            - "--port"
+            - {{ $port | quote }}
+            - "--max-model-len"
+            - {{ default $d.maxModelLen $spec.maxModelLen | quote }}
+            - "--gpu-memory-utilization"
+            - {{ default $d.gpuMemoryUtilization $spec.gpuMemoryUtilization | quote }}
+            - "--dtype"
+            - {{ default $d.dtype $spec.dtype | quote }}
+            {{- if eq $task "embed" }}
+            - "--task"
+            - "embed"
+            {{- end }}
+            {{- range $spec.extraArgs }}
+            - {{ . | quote }}
+            {{- end }}
+          env:
+            - name: HF_HOME
+              value: /models/.hf-cache
+            {{- if $.Values.hfOffline }}
+            - name: HF_HUB_OFFLINE
+              value: "1"
+            - name: TRANSFORMERS_OFFLINE
+              value: "1"
+            {{- end }}
+            {{- with $.Values.apiKeySecret }}
+            - name: VLLM_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ . }}
+                  key: VLLM_API_KEY
+            {{- end }}
+          ports:
+            - name: http
+              containerPort: {{ $port }}
+          readinessProbe:
+            httpGet: { path: /health, port: http }
+            initialDelaySeconds: {{ $d.readiness.initialDelaySeconds }}
+            periodSeconds: {{ $d.readiness.periodSeconds }}
+            failureThreshold: {{ $d.readiness.failureThreshold }}
+          livenessProbe:
+            httpGet: { path: /health, port: http }
+            initialDelaySeconds: 120
+            periodSeconds: 30
+            failureThreshold: 6
+          resources:
+            {{- toYaml (default $d.resources $spec.resources) | nindent 12 }}
+          volumeMounts:
+            - name: models
+              mountPath: /models
+              readOnly: {{ not $.Values.hfOffline | ternary false true }}
+            - name: shm
+              mountPath: /dev/shm
+      volumes:
+        - name: models
+          hostPath:
+            path: {{ $.Values.modelsHostPath }}
+            type: Directory
+        # vLLM's workers share tensors over shared memory; the default 64Mi is not enough.
+        - name: shm
+          emptyDir:
+            medium: Memory
+            sizeLimit: {{ default "8Gi" $spec.shmSize }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: {{ $name }}
+    app.kubernetes.io/component: model
+    app.kubernetes.io/part-of: red-teaming
+    app.kubernetes.io/instance: {{ $.Release.Name }}
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: {{ $name }}
+    app.kubernetes.io/instance: {{ $.Release.Name }}
+  ports:
+    - name: http
+      port: {{ $port }}
+      targetPort: http
+{{- end }}
+{{- end }}

@@ -1,0 +1,14 @@
+# Qwen3-8B, served as `qwen3-8b`: the control judge, the generator and the attackers of a run. One
+# model for the three roles is a deployment's choice, not the platform's -- a run binds each role
+# separately, and two runs may bind them differently. bf16 weights take about 16 GB; the KV cache is
+# what the hardware overlay sizes.
+models:
+  judge:
+    enabled: true
+    path: qwen3-8b
+    servedModelName: qwen3-8b
+    task: generate
+    # `--enable-reasoning`-style flags are deliberately absent: the judge answers a verdict token
+    # and the grader reads its distribution; a reasoning budget is the run spec's to declare.
+    extraArgs:
+      - "--enable-prefix-caching"

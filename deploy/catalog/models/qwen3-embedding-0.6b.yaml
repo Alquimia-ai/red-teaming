@@ -1,0 +1,12 @@
+# Qwen3-Embedding-0.6B, served as `qwen3-embedding-0.6b`: the embedder the realism estimator
+# measures a category's queries against. About 1.2 GB of weights; it shares the card with the judge.
+models:
+  embedder:
+    enabled: true
+    path: qwen3-embedding-0.6b
+    servedModelName: qwen3-embedding-0.6b
+    task: embed
+    maxModelLen: 8192
+    resources:
+      requests: { cpu: "1", memory: 4Gi, nvidia.com/gpu: 1 }
+      limits: { cpu: "4", memory: 8Gi, nvidia.com/gpu: 1 }
