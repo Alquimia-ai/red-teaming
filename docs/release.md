@@ -79,3 +79,28 @@ dist/redteam-*.pyz --help
 
 The script builds the command line and the contracts package as wheels first, because the command
 line depends on a workspace member no index serves, and hands both to `shiv`.
+
+## Initial bug-fix deliveries
+
+Ship the fixes in two promotions, preserving separate implementation PRs:
+
+| Delivery | Implementation groups | Release artifacts |
+|---|---|---|
+| First | Run allowance and atomic recovery (#13, #15, #16); consistent bundles and pinned priors (#14, #19) | Initial API, runner and CLI releases, including the existing develop baseline |
+| Second | Frozen-request retries and terminal Kubernetes Job replacement (#17, #18) | API patch; retain the first delivery's compatible runner and CLI |
+
+Promote the first delivery before integrating the second group. Merge release-please's generated
+version PRs and verify versioned multi-platform images and CLI attachments before counting a
+delivery as published. Synchronize main's version commits into develop before the next promotion.
+Version numbers are determined by release-please; the expected initial versions are 0.1.0.
+
+The first release notes must identify #17 and #18 as still pending. Include exact image digests
+and a compatible API/runner/CLI version set. Publication is the endpoint of this plan; it does not
+include deploying to a user's cluster. Default CI and mocked Kubernetes tests do not certify a real
+cluster deployment.
+
+Stop old runners and catalogue publishers before enabling these storage protocols in a deployment.
+Legacy incomplete runs without trustworthy consumed allowance, required provenance, or a needed
+pinned prior must retain their evidence and start under a new id. Existing manifests remain
+readable. Do not roll an old writer back onto runs or reservations written by the new code; keep
+the last compatible artifact versions pinned and publish a corrective patch if needed.

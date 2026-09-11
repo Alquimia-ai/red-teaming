@@ -100,3 +100,11 @@ control judge saw broken most, which categories of interaction the search found 
 assistant reproducibly. They are delivered because an operator wants to read them, named as
 control in the manifest, and never part of the coverage -- no grade can move a count that is read
 off keys.
+
+## Frozen realism input
+
+A declared `realism_prior` is resolved at acceptance together with `realism_prior_version` and
+`realism_prior_digest`. The request may provide either pin; validation and acceptance return the
+resolved identity. Execution verifies the stored bytes and reads only that version. A prior missing
+from the store or with a conflicting digest is rejected rather than silently skipped. A legacy run
+that needs an unpinned prior must use a new run id. Completed runs remain readable.

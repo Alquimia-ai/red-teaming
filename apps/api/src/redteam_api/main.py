@@ -47,6 +47,9 @@ app = FastAPI(
 
 
 class AcceptedRun(BaseModel):
+    realism_prior: str | None = None
+    realism_prior_version: int | None = None
+    realism_prior_digest: str | None = None
     run_id: str
     result_location: str
     """Where the manifest will appear. The consumer knows where to look before there is anything to
@@ -63,6 +66,9 @@ class AcceptedRun(BaseModel):
 class ValidatedRun(BaseModel):
     """What `POST /runs` would freeze, without freezing it."""
 
+    realism_prior: str | None = None
+    realism_prior_version: int | None = None
+    realism_prior_digest: str | None = None
     run_id: str
     catalogue_versions: dict[str, int]
     contract_digest: str
@@ -106,6 +112,7 @@ def _gate(spec: RunSpec) -> tuple[RunSpec, str]:
     from redteam_api import deps
     from redteam_catalogue.assets import EmptySelection, NothingToGenerate
     from redteam_secrets.resolver import SecretNotFound
+    from redteam_store import priors
     from redteam_store.contract import ContractMismatch, ContractMissing
 
     published = deps.catalogue_versions()
@@ -120,7 +127,27 @@ def _gate(spec: RunSpec) -> tuple[RunSpec, str]:
             attackers_named=deps.attackers_named(spec, versions),
             model_driven=selection.model_driven,
         )
-        pinned = spec.model_copy(update={"catalogue_versions": versions})
+        if spec.realism_prior is None and (
+            spec.realism_prior_version is not None or spec.realism_prior_digest is not None
+        ):
+            raise ValueError("prior version and digest require realism_prior")
+        prior = (
+            priors.resolve(
+                deps.store(),
+                spec.realism_prior,
+                spec.realism_prior_version,
+                spec.realism_prior_digest,
+            )
+            if spec.realism_prior
+            else None
+        )
+        pinned = spec.model_copy(
+            update={
+                "catalogue_versions": versions,
+                "realism_prior_version": prior.version if prior else None,
+                "realism_prior_digest": prior.digest if prior else None,
+            }
+        )
         if deps.hands_values():
             for ref in deps.secret_refs_for(pinned):
                 deps.resolver().resolve(ref)
@@ -134,7 +161,13 @@ def _gate(spec: RunSpec) -> tuple[RunSpec, str]:
             detail=f"secret reference {missing.ref!r} resolves to nothing in this deployment; "
             f"the runner would die at launch looking for it",
         ) from missing
-    except (ValidationFailure, EmptySelection, NothingToGenerate, ValueError) as refused:
+    except (
+        ValidationFailure,
+        EmptySelection,
+        NothingToGenerate,
+        ValueError,
+        priors.PriorNotFound,
+    ) as refused:
         raise HTTPException(status_code=400, detail=str(refused)) from refused
     return pinned, contract_digest
 
@@ -147,6 +180,9 @@ def validate_run(spec: RunSpec) -> ValidatedRun:
     pinned, contract_digest = _gate(spec)
     return ValidatedRun(
         run_id=pinned.run_id,
+        realism_prior=pinned.realism_prior,
+        realism_prior_version=pinned.realism_prior_version,
+        realism_prior_digest=pinned.realism_prior_digest,
         catalogue_versions=pinned.catalogue_versions,
         contract_digest=contract_digest,
         secret_refs=list(deps.secret_refs_for(pinned)),
@@ -193,6 +229,9 @@ def create_run(spec: RunSpec) -> AcceptedRun:
     launched = _launch(pinned)
     return AcceptedRun(
         run_id=pinned.run_id,
+        realism_prior=pinned.realism_prior,
+        realism_prior_version=pinned.realism_prior_version,
+        realism_prior_digest=pinned.realism_prior_digest,
         result_location=layout.manifest(pinned.run_id),
         catalogue_versions=dict(pinned.catalogue_versions),
         launched=launched,
@@ -229,6 +268,8 @@ def _fields_that_differ(asked: RunSpec, frozen: RunSpec) -> list[str]:
     held = frozen.model_dump(mode="json")
     differing: list[str] = []
     for field, value in sent.items():
+        if field in {"realism_prior_version", "realism_prior_digest"} and value is None:
+            continue
         if field == "catalogue_versions":
             pinned = held.get(field) or {}
             if any(pinned.get(name) != version for name, version in value.items()):

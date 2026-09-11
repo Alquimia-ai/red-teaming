@@ -245,6 +245,15 @@ def attack(
         artifacts=ControlArtifacts(store, run_id),
         components={
             "target": connector.kind,
+            **(
+                {
+                    "realism_prior": spec.realism_prior,
+                    "realism_prior_version": str(spec.realism_prior_version),
+                    "realism_prior_digest": str(spec.realism_prior_digest),
+                }
+                if spec.realism_prior is not None
+                else {}
+            ),
             "contract_digest": contract_digest,
             "profile_judge_model": judge_model or "none",
             "profile_judge_serving_path": serving_path.value,
