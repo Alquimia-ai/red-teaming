@@ -39,8 +39,14 @@ publishes `ghcr.io/alquimia-ai/red-teaming-{api,runner}` -- packages of this rep
 release-please opens one release pull request per app (`api`, `runner`, `cli`), tags
 `<app>-vX.Y.Z`, publishes the images under the version and `latest`, and attaches the command
 line as a zipapp per platform (`scripts/build_pyz.sh`). The command line is parsed with the
-standard library and rendered with rich; it carries no click. Deployment charts and the final
-documentation land next. Keep this file honest: describe what exists, mark what is planned.
+standard library and rendered with rich; it carries no click. And deployment: `deploy/charts/
+red-teaming-stack` (the API with its RBAC and the wiring it stamps on every run's Job, MinIO or the
+provider's store, the seed as a hook), `deploy/charts/red-teaming-models` (one vLLM Deployment and
+Service per catalog entry, from weights on the node's disk), `deploy/catalog/` (models x hardware,
+composed by helm's map merge), `deploy/appliance/` (k3s, SOPS/age secrets, one idempotent
+`install.sh`, NodePort 30880) and `deploy/cloud/` (EKS and GKE values). The final documentation
+pass and the promotion to `main` land next. Keep this file honest: describe what exists, mark what
+is planned.
 
 ## Repository structure
 
@@ -85,6 +91,8 @@ uv run pytest -q tests/e2e                              # the platform in one pr
 uv run redteam init && uv run redteam local up --build  # the local stack (docs/deploy/local.md)
 uv run pytest -m docker tests/e2e/test_compose.py       # the stack in containers, via the cli
 scripts/build_pyz.sh dist                               # the cli as one file: dist/redteam-<os>-<arch>.pyz
+helm lint deploy/charts/red-teaming-stack               # the charts (helm on the PATH; CI installs it)
+sudo deploy/appliance/install.sh                        # the appliance, end to end (docs/deploy/appliance.md)
 npm ci && pre-commit install --hook-type commit-msg      # commitlint on every commit
 ```
 
@@ -168,6 +176,7 @@ Use these words, in this sense, everywhere -- code, docs, commits:
 | `tests/guards/test_dockerfiles.py` | Every app's Dockerfile is exactly what its workspace closure renders to |
 | `tests/guards/test_image_closure.py` | What an image carries is a property of the graph: the runner serves no HTTP; the API reaches no assistant, model or brain |
 | `tests/guards/test_release_closure.py` | A component's `include-paths` are its dependency closure; the manifest and the pyprojects agree on versions |
+| `tests/guards/test_charts.py` | The charts render with every values file; what they render is what the dispatcher and the seed expect; the seed the chart carries is the seed |
 | `packages/contracts/tests/test_plan_determinism.py` | Work-unit keys derive from the plan alone, across processes |
 
 ## Skills
