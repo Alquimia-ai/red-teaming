@@ -74,3 +74,15 @@ helm upgrade --install red-teaming deploy/charts/red-teaming-stack \
 
 `helm lint` and `helm template` with the appliance's and both clouds' values run in CI, and
 `tests/guards/test_charts.py` checks what is rendered against what the dispatcher expects.
+
+## Resuming a terminal Job
+
+The dispatcher reuses the run's unique Job name. A conflict with an active Job reports that the
+runner already exists. A terminal managed Job is reclaimed only after its Pods have terminated,
+using UID and resourceVersion deletion preconditions and foreground propagation. Concurrent resume
+requests compete for the same name; a stale request cannot remove another request's replacement.
+
+If Pods remain unfinished, the cluster cannot be inspected, or deletion has not completed within
+the bounded wait, the API returns a retryable dispatch error. Retry after the cluster finishes
+cleanup; there is no requirement to wait for the Job's TTL. Job logs may be removed with the Job,
+while attempts, failures, traces and recovery evidence stay in the append-only store.

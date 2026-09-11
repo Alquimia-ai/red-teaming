@@ -94,7 +94,8 @@ assistant or model provider; costs money).
 - **Generation never reaches the assistant; conduction never reads the knowledge base.** Package
   boundary, guarded by imports. The runner is where they are composed.
 - **The store is append-only.** Every key under `runs/{run_id}/` is written once, when the thing
-  it records can no longer change. There is no `delete`, and no cache is rewritten in place.
+  it records can no longer change. ObjectStore has no `delete`, and no cache is rewritten in place. The Kubernetes dispatcher may
+  reclaim a verified terminal Job with identity preconditions.
 - **Identity derives from content.** A probe's id from what built it; an attack's id from the
   probe and its parameters; the probe set's digest from the sorted set. Nothing in an identity
   depends on when it ran, or resumption silently repeats the whole run.
