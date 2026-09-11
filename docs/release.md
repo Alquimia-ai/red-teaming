@@ -5,11 +5,18 @@ Three things ship, each on its own cadence: the API image, the runner image, and
 
 ## develop: images on every push
 
-`.github/workflows/images-develop.yml` builds `alquimiaai/red-teaming-api` and
-`alquimiaai/red-teaming-runner` for `linux/amd64` and `linux/arm64` on every push to `develop`, under
-two tags each: `develop`, which always points at the newest, and `sha-<7>`, which names the exact
-commit for a deployment that wants to pin what it runs. Nothing is versioned here; `develop` is what
-the compose stack pulls when it is not built from a checkout.
+`.github/workflows/images-develop.yml` builds `ghcr.io/alquimia-ai/red-teaming-api` and
+`ghcr.io/alquimia-ai/red-teaming-runner` for `linux/amd64` and `linux/arm64` on every push to
+`develop`, under two tags each: `develop`, which always points at the newest, and `sha-<7>`, which
+names the exact commit for a deployment that wants to pin what it runs. Nothing is versioned here;
+`develop` is what the compose stack pulls when it is not built from a checkout.
+
+The images are **packages of this repository** on GitHub's container registry: the workflow pushes
+with its own token (`packages: write`), no registry credential lives in the repository, and every
+image carries `org.opencontainers.image.source` pointing here, which is what files it under the
+repository's packages. A package inherits the repository's visibility on its first push; a private
+repository's images need a pull secret on the cluster (`docs/deploy/`), or the package made public
+from its settings page.
 
 ## main: release-please
 
@@ -36,16 +43,16 @@ For each component with something to release, release-please opens **one pull re
 tag -- `api-v0.2.0`, `runner-v0.1.3`, `cli-v0.2.0` -- and the GitHub release, and the same workflow
 then publishes what the component ships:
 
-- **api**, **runner**: the image under its version (`alquimiaai/red-teaming-api:0.2.0`) and under
-  `latest`, for `linux/amd64` and `linux/arm64`.
+- **api**, **runner**: the image under its version (`ghcr.io/alquimia-ai/red-teaming-api:0.2.0`)
+  and under `latest`, for `linux/amd64` and `linux/arm64`.
 - **cli**: one zipapp per platform, attached to the release --
   `redteam-linux-x86_64.pyz`, `redteam-linux-aarch64.pyz`, `redteam-darwin-arm64.pyz`,
   `redteam-darwin-x86_64.pyz`. Each runs with the platform's own Python 3.12:
   `chmod +x redteam-darwin-arm64.pyz && ./redteam-darwin-arm64.pyz --help`.
 
-The images are built and pushed through the organisation's reusable workflow
-(`Alquimia-ai/infra-workflows/.github/workflows/docker-build-push.yml`), which needs the
-`DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` secrets in this repository.
+Both workflows build through the same reusable one in this repository
+(`.github/workflows/publish-image.yml`), so `develop` and a release cannot drift on how an image is
+built: same Dockerfile, same platforms, same labels, a build cache per app.
 
 ## Promoting
 

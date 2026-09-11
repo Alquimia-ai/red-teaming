@@ -34,7 +34,8 @@ operator's side: `apps/cli` (`redteam init | local up|down|status|logs | catalog
 receiver that keeps what it acknowledges, a mock assistant speaking the runtime's inference API;
 the runner created per run through the socket), with `tests/e2e/test_compose.py` (tier `docker`)
 driving the containers through the command line -- and delivery: every push to `develop`
-publishes `alquimiaai/red-teaming-{api,runner}` as `develop` and `sha-<7>`; on `main`,
+publishes `ghcr.io/alquimia-ai/red-teaming-{api,runner}` -- packages of this repository -- as
+`develop` and `sha-<7>`; on `main`,
 release-please opens one release pull request per app (`api`, `runner`, `cli`), tags
 `<app>-vX.Y.Z`, publishes the images under the version and `latest`, and attaches the command
 line as a zipapp per platform (`scripts/build_pyz.sh`). The command line is parsed with the
