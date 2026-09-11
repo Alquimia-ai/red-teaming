@@ -437,15 +437,38 @@ def publish(
             delivered=conducted,
         )
 
+    rejected: set[int] = set()
     for _ in range(CLAIM_ATTEMPTS):
         published = versions(store, name)
         if published and _already_holds(store, name, published[-1], payload, encoded):
             return answer(published[-1], created=False)
-        version = _next_version(store, name, encoded)
+        claim = json.dumps(
+            {
+                "catalogue": _digest(payload),
+                "sidecars": [_digest(part) if part is not None else None for part in encoded],
+            },
+            sort_keys=True,
+        ).encode()
+        version = _next_version(store, name, claim, rejected)
+        # _next_version may observe a publication that completed after our first listing.
+        published = versions(store, name)
+        if published and _already_holds(store, name, published[-1], payload, encoded):
+            return answer(published[-1], created=False)
+        try:
+            store.put(layout.catalogue_claim(name, version), claim, content_type="application/json")
+        except ObjectAlreadyExists as taken:
+            if store.get(layout.catalogue_claim(name, version)) != claim:
+                collision = taken
+                continue
         if (lost := _claim_sidecars(store, name, version, encoded)) is not None:
             # Somebody else's sidecar landed at this version between the listing and the write.
             # `_next_version` decides on the next round whether it carries what this publish holds.
             collision = lost
+            rejected.add(version)
+            continue
+        if not _sidecars_hold(store, name, version, encoded):
+            collision = ObjectAlreadyExists(layout.catalogue_claim(name, version))
+            rejected.add(version)
             continue
         key = layout.catalogue(name, version)
         try:
@@ -472,12 +495,11 @@ def _claim_sidecars(
     `_next_version` having landed on the orphan this publish is completing.
     """
     for key, expected in _sidecars_at(name, version, encoded):
-        if store.exists(key):
-            continue
         try:
             store.put(key, expected, content_type="application/json")
         except ObjectAlreadyExists as taken:
-            return taken
+            if store.get(key) != expected:
+                return taken
     return None
 
 
@@ -525,21 +547,21 @@ def _already_holds(
     return _sidecars_hold(store, name, version, encoded)
 
 
-def _next_version(store: ObjectStore, name: str, encoded: tuple[bytes | None, ...]) -> int:
-    """One past the newest published catalogue, unless an orphaned sidecar already sits there.
-
-    A sidecar with no catalogue beside it is a publish that died between its writes. When the
-    sidecars at that version are exactly the ones this publish holds, this publish completes it
-    there -- a retry after a crash is that publish. Otherwise the version is stepped over: the
-    listing ignores sidecars, so `latest` steps over it too.
-    """
+def _next_version(store: ObjectStore, name: str, claim: bytes, rejected: set[int]) -> int:
+    """Resume an identical reserved bundle, skipping unclaimed legacy sidecar fragments."""
     published = versions(store, name)
     version = (published[-1] + 1) if published else FIRST_VERSION
-    while any(store.exists(spell(name, version)) for spell in _SIDECARS):
-        if _sidecars_hold(store, name, version, encoded):
-            break
+    while True:
+        if version in rejected:
+            version += 1
+            continue
+        key = layout.catalogue_claim(name, version)
+        if store.exists(key):
+            if store.get(key) == claim:
+                return version
+        elif not any(store.exists(spell(name, version)) for spell in _SIDECARS):
+            return version
         version += 1
-    return version
 
 
 def _validate_grounding(needs_base: frozenset[str], catalogue: Catalogue) -> None:

@@ -261,6 +261,12 @@ class RunSpec(BaseModel):
     """The natural-query prior the run measures realism against, by published name. The client's
     own traffic, published to the store; an invented pool measures our imagination."""
 
+    realism_prior_version: int | None = Field(default=None, ge=1)
+    """Resolved at acceptance; execution never selects the latest prior."""
+
+    realism_prior_digest: str | None = Field(default=None, pattern=r"^sha256:[0-9a-f]{64}$")
+    """Digest of the exact published prior bytes, verified before execution."""
+
     exploit: ExploitSpec | None = None
     """The search's parameters. **The exploitation stage runs only when this, `generator`,
     `embedder` and `realism_prior` are all declared** -- it needs a model to write queries, one to

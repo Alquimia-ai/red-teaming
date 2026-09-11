@@ -487,3 +487,51 @@ def test_a_platform_that_refuses_to_launch_is_a_503(
 
 def test_healthz(client: TestClient) -> None:
     assert client.get("/healthz").json() == {"status": "ok"}
+
+
+def test_prior_identity_is_frozen_and_returned_by_validation_and_acceptance(
+    client: TestClient, store: MemoryObjectStore
+) -> None:
+    from redteam_store import priors
+
+    prior = priors.publish(store, "traffic", ["first query", "second query"])
+    asked = _spec("prior-pinned", realism_prior="traffic")
+    validated = client.post("/runs:validate", json=asked)
+    accepted = client.post("/runs", json=asked)
+    assert validated.status_code == 200 and accepted.status_code == 202
+    for response in (validated, accepted):
+        assert response.json()["realism_prior_version"] == prior.version
+        assert response.json()["realism_prior_digest"] == prior.digest
+    priors.publish(store, "traffic", ["new query"])
+    retry = client.post("/runs", json=asked)
+    assert retry.status_code == 202
+    assert retry.json()["realism_prior_digest"] == prior.digest
+    frozen = RunSpec.model_validate_json(store.get(layout.spec("prior-pinned")))
+    assert frozen.realism_prior_version == prior.version
+    assert frozen.realism_prior_digest == prior.digest
+    conflicting = client.post("/runs", json={**asked, "realism_prior_version": 2})
+    assert conflicting.status_code == 409
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"realism_prior": "missing"},
+        {"realism_prior_version": 1},
+        {"realism_prior": "traffic", "realism_prior_digest": "sha256:" + "0" * 64},
+        {"realism_prior": "traffic", "realism_prior_version": 99},
+    ],
+)
+def test_invalid_prior_is_refused_before_acceptance(
+    client: TestClient,
+    store: MemoryObjectStore,
+    dispatcher: RecordingDispatcher,
+    overrides: dict[str, Any],
+) -> None:
+    from redteam_store import priors
+
+    priors.publish(store, "traffic", ["query"])
+    response = client.post("/runs", json=_spec("invalid-prior", **overrides))
+    assert response.status_code == 400
+    assert not store.exists(layout.spec("invalid-prior"))
+    assert dispatcher.launched == []

@@ -392,3 +392,8 @@ def calls_prefix(run_id: str) -> str:
 def call_entry(run_id: str, number: int, *, result: bool = False) -> str:
     suffix = "result" if result else "reserved"
     return f"{calls_prefix(run_id)}{number:012d}.{suffix}.json"
+
+
+def catalogue_claim(name: str, version: int) -> str:
+    """The immutable identity reserving all files of one catalogue bundle."""
+    return _sidecar(name, version, "claim")

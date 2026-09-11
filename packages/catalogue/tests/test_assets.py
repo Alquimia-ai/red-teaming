@@ -525,3 +525,129 @@ def test_an_orphan_sidecar_of_another_bundle_is_stepped_over(
     assert published.version == 2
     assert versions(store, "baseline") == (2,)
     assert latest(store, "baseline") == 2
+
+
+@pytest.mark.parametrize("sidecar", ["contract", "grounding", "delivery"])
+def test_sidecar_inserted_after_selection_cannot_mix_the_bundle(
+    universal: Catalogue, contract: ContractSpec, monkeypatch: pytest.MonkeyPatch, sidecar: str
+) -> None:
+    import redteam_catalogue.assets as module
+    from redteam_store.versioned import digest
+
+    store = MemoryObjectStore()
+    engines, transforms = _pieces(universal)
+    original = module._next_version
+    inserted = False
+
+    def interleave(*args: Any) -> int:
+        nonlocal inserted
+        chosen = original(*args)
+        if not inserted:
+            inserted = True
+            spell = {
+                "contract": layout.catalogue_contract,
+                "grounding": layout.catalogue_grounding,
+                "delivery": layout.catalogue_delivery,
+            }[sidecar]
+            store.put(spell("baseline", chosen), b'{"foreign":true}')
+        return chosen
+
+    monkeypatch.setattr(module, "_next_version", interleave)
+    result = publish(store, "baseline", universal, contract, engines, transforms)
+    assert result.version == 2
+    assert result.contract_digest == digest(store.get(layout.catalogue_contract("baseline", 2)))
+    assert not store.exists(layout.catalogue("baseline", 1))
+    assert not store.exists(layout.catalogue_delivery("baseline", 2))
+
+
+@pytest.mark.parametrize("identical", [True, False])
+def test_publishers_interleaved_at_claim_commit_consistent_bundles(
+    universal: Catalogue, contract: ContractSpec, monkeypatch: pytest.MonkeyPatch, identical: bool
+) -> None:
+    store = MemoryObjectStore()
+    engines, transforms = _pieces(universal)
+    original = store.put
+    other = universal if identical else _revised(universal, 2)
+    entered = False
+
+    def interleave(key: str, data: bytes, *, content_type: str | None = None) -> None:
+        nonlocal entered
+        if key == layout.catalogue_claim("baseline", 1) and not entered:
+            entered = True
+            publish(store, "baseline", other, contract, engines, transforms)
+        original(key, data, content_type=content_type)
+
+    monkeypatch.setattr(store, "put", interleave)
+    result = publish(store, "baseline", universal, contract, engines, transforms)
+    assert result.version == (1 if identical else 2)
+    assert result.created is not identical
+    assert load(store, "baseline", result.version) == universal
+    assert len(versions(store, "baseline")) == (1 if identical else 2)
+
+
+def test_identical_publish_completed_during_version_selection_is_reused(
+    universal: Catalogue, contract: ContractSpec, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import redteam_catalogue.assets as module
+
+    store = MemoryObjectStore()
+    engines, transforms = _pieces(universal)
+    original = module._next_version
+    entered = False
+
+    def interleave(*args: Any) -> int:
+        nonlocal entered
+        if not entered:
+            entered = True
+            publish(store, "baseline", universal, contract, engines, transforms)
+        return original(*args)
+
+    monkeypatch.setattr(module, "_next_version", interleave)
+    result = publish(store, "baseline", universal, contract, engines, transforms)
+    assert result.version == 1 and not result.created
+    assert versions(store, "baseline") == (1,)
+
+
+@pytest.mark.parametrize("with_delivery", [False, True])
+def test_competing_optional_sidecars_are_reserved_as_part_of_the_bundle(
+    universal: Catalogue,
+    contract: ContractSpec,
+    monkeypatch: pytest.MonkeyPatch,
+    with_delivery: bool,
+) -> None:
+    from redteam_store.delivery import load as load_delivery
+
+    store = MemoryObjectStore()
+    engines, transforms = _pieces(universal)
+    original = store.put
+    entered = False
+
+    def interleave(key: str, data: bytes, *, content_type: str | None = None) -> None:
+        nonlocal entered
+        if key == layout.catalogue_contract("baseline", 1) and not entered:
+            entered = True
+            publish(
+                store,
+                "baseline",
+                universal,
+                contract,
+                engines,
+                transforms,
+                delivery=None if with_delivery else CONDUCTED,
+            )
+        original(key, data, content_type=content_type)
+
+    monkeypatch.setattr(store, "put", interleave)
+    result = publish(
+        store,
+        "baseline",
+        universal,
+        contract,
+        engines,
+        transforms,
+        delivery=CONDUCTED if with_delivery else None,
+    )
+    assert result.version == 1
+    assert versions(store, "baseline") == (1, 2)
+    assert bool(load_delivery(store, "baseline", 1)) is with_delivery
+    assert bool(load_delivery(store, "baseline", 2)) is not with_delivery

@@ -16,6 +16,7 @@ immutable: once accepted they are not rewritten in place; they are superseded by
 | [007](007-control-signal-as-control-artifacts-and-typed-transport-failures.md) | Control signal persists as control artifacts and transport failures never close a unit | ✅ Accepted | engine, store, contracts, evidence |
 | [008](008-helm-charts-sops-and-vllm-for-the-appliance.md) | Helm charts with SOPS secrets and vLLM served models for the appliance | ✅ Accepted | deploy, dispatch, settings |
 | [009](009-durable-call-reservations-and-atomic-recovery.md) | Durable call reservations and atomic stage recovery | ✅ Accepted | engine, store, runner |
+| [010](010-reserve-bundle-identity-and-pin-priors.md) | Reserve bundle identity and pin realism priors | ✅ Accepted | catalogue, store, contracts, api |
 
 **Status legend:** ✅ Accepted · 📝 Proposed · 🚫 Deprecated · ↩️ Superseded by ADR-NNN
 

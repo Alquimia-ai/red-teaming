@@ -51,3 +51,11 @@ gate rather than reconciled in silence.
 
 Authoring is documented in the `/catalogue` skill; two bundles ship under `deploy/seed/catalogues/`
 as a starting point, and every engagement is expected to publish its own.
+
+## Publication identity
+
+A new publication first claims a version with the digests of the catalogue and all sidecars,
+including explicit absence of optional sidecars. Only an identical bundle can complete this claim.
+All existing sidecars are compared and all required files verified before the catalogue commit key
+is written. Unclaimed fragments from older publishers are skipped. Stop older catalogue publishers
+before starting writers that use this protocol.

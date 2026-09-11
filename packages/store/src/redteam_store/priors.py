@@ -95,3 +95,17 @@ def publish(store: ObjectStore, name: str, phrasings: Sequence[str]) -> Publishe
         size=len(pool),
         created=written.created,
     )
+
+
+def resolve(
+    store: ObjectStore, name: str, version: int | None = None, digest: str | None = None
+) -> PublishedPrior:
+    """Resolve once, and verify an optional caller-supplied content identity."""
+    pinned = latest(store, name) if version is None else version
+    payload = versioned.read(store, KIND, name, pinned)
+    actual = versioned.digest(payload)
+    if digest is not None and digest != actual:
+        raise ValueError(f"prior {name!r} v{pinned} digest does not match published content")
+    return PublishedPrior(
+        name, pinned, layout.prior(name, pinned), actual, len(json.loads(payload)), created=False
+    )
