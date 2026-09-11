@@ -10,7 +10,7 @@ packages = ["src/redteam_api"]
 
 [project]
 name = "red-teaming-api"
-version = "0.1.0"
+version = "0.1.1"
 description = "The HTTP gate: accepts runs, freezes the spec, launches a runner, publishes catalogue bundles and priors, and answers state from the store and the platform."
 requires-python = ">=3.12,<3.14"
 dependencies = [
