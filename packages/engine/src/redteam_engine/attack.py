@@ -8,8 +8,8 @@ dataset cover the whole run whether this is the first attempt or the fifth. A re
 profiled only its tail would describe a different run than its manifest claims, and its dataset
 would not be derivable from the store.
 
-Conduction that already closed is not repeated: `dataset.json` in the store means the deliverable
-exists and only the manifest remains.
+Conduction that already closed is not repeated: its atomic recovery checkpoint restores both
+the dataset and required provenance before the manifest can close the run.
 
 This module names no concrete target adapter and a guard checks that it never does: the target is
 built by name inside `attackable`, behind the door, and an adapter reachable any other way is a
@@ -18,7 +18,6 @@ budget and a safe-mode gate that can be skipped by accident.
 
 from __future__ import annotations
 
-import contextlib
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
@@ -28,6 +27,7 @@ from gaussia.schemas.roastme import Probe
 from redteam_catalogue.contract import build_contract
 from redteam_engine.artifacts import ControlArtifacts
 from redteam_engine.attackers import AttackerUnbound, attackers_for
+from redteam_engine.call_journal import CallJournal
 from redteam_engine.conduct import conduct
 from redteam_engine.dataset import RoastDataset, roast_dataset
 from redteam_engine.exploit import exploiter_for
@@ -46,6 +46,7 @@ from redteam_engine.resume import (
     closed_conduction,
     live_units,
     recorded_traces,
+    remember_conduction,
     remember_exploit,
     remembered_exploit,
     responses_of,
@@ -55,8 +56,7 @@ from redteam_judges.grading import grader_for
 from redteam_store import contract as contract_store
 from redteam_store import delivery as delivery_store
 from redteam_store import layout
-from redteam_store.codec import encode_json
-from redteam_store.interface import ObjectAlreadyExists, ObjectStore
+from redteam_store.interface import ObjectStore
 from redteam_target.capabilities import CapabilityGate
 
 if TYPE_CHECKING:
@@ -115,12 +115,13 @@ def attack(
             counts generation too. `None` starts the clock here.
     """
     run_id = plan.run_id
-    if store.exists(layout.dataset(run_id)):
+    if store.exists(layout.dataset(run_id)) or store.exists(layout.recovery(run_id, "conduction")):
         return _attacked(store, run_id, closed_conduction(store, run_id))
 
     by_id: dict[str, dict[str, Any]] = {str(p["id"]): dict(p) for p in probes}
     connector = spec.connector
     budget = Budget(
+        journal=CallJournal(store, run_id, spec.budget.max_target_calls),
         max_target_calls=spec.budget.max_target_calls,
         max_wall_seconds=spec.budget.max_wall_seconds,
     )
@@ -213,6 +214,8 @@ def attack(
     remembered: dict[str, str] = {}
 
     def _build_dataset(result: Any, report: Any, searched: dict[str, str] | None) -> list[Any]:
+        if governed.fatal is not None:
+            raise governed.fatal
         roast = roast_dataset(
             units,
             handed,
@@ -264,19 +267,9 @@ def attack(
         ),
     }
 
-    # The attack dataset, written once conduction closes: one session per replica, plus the
-    # search's when it ran. Beside it, what conduction said about itself, so an attempt that finds
-    # the dataset carries the same provenance into the manifest without repeating the attack.
-    with contextlib.suppress(ObjectAlreadyExists):
-        store.put(
-            layout.dataset(run_id),
-            encode_json([d.model_dump(mode="json") for d in conducted.datasets]),
-            content_type="application/json",
-        )
-    with contextlib.suppress(ObjectAlreadyExists):
-        store.put(
-            layout.conduction(run_id), encode_json(components), content_type="application/json"
-        )
+    if governed.fatal is not None:
+        raise governed.fatal
+    remember_conduction(store, run_id, components, list(conducted.datasets))
     return _attacked(store, run_id, components)
 
 

@@ -33,6 +33,7 @@ from redteam_contracts.run_spec import RunSpec
 from redteam_delivery import Delivery, deliver, idempotency_key
 from redteam_engine.assemble import begin_attempt, write_failure, write_manifest
 from redteam_engine.attack import attack
+from redteam_engine.call_journal import CallJournal
 from redteam_probes.generate_run import generate_for
 from redteam_probes.generation import brain_registry, generator_for
 from redteam_probes.request import GenerationReport, GenerationRequest
@@ -101,6 +102,10 @@ def execute(
     started = time.monotonic()
     resumed = 0
     try:
+        if not store.exists(layout.dataset(run_id)) and not store.exists(
+            layout.recovery(run_id, "conduction")
+        ):
+            CallJournal(store, run_id, spec.budget.max_target_calls)
         report = _generate(store, spec, settings, resolver, knowledge_base)
         probes = [dict(p) for p in json.loads(store.get(layout.blob(report.probes_digest)))]
         # The versions generation read from are the ones the plan is conducted against: the spec's

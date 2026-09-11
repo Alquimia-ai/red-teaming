@@ -374,3 +374,21 @@ def parse_trace_key(key: str) -> tuple[str, str, int] | None:
     if match is None:
         return None
     return match.group(1), match.group(2), int(match.group(3))
+
+
+def recovery(run_id: str, stage: str) -> str:
+    """An atomic stage checkpoint or start record, separate from deliverable files."""
+    return f"{run_prefix(run_id)}/recovery/{_checked('stage', stage)}.json"
+
+
+def call_budget(run_id: str) -> str:
+    return f"{run_prefix(run_id)}/calls/budget.json"
+
+
+def calls_prefix(run_id: str) -> str:
+    return f"{run_prefix(run_id)}/calls/entries/"
+
+
+def call_entry(run_id: str, number: int, *, result: bool = False) -> str:
+    suffix = "result" if result else "reserved"
+    return f"{calls_prefix(run_id)}{number:012d}.{suffix}.json"

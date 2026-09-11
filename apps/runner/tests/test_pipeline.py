@@ -380,3 +380,55 @@ def test_an_unbound_attacker_is_refused_before_the_assistant_is_reached() -> Non
     assert assistant.calls == []
     [key] = store.list_prefix(layout.failures_prefix(RUN) + "/")
     assert json.loads(store.get(key))["error"].startswith("AttackerUnbound")
+
+
+@pytest.mark.parametrize("broken", ["dataset", "conduction"])
+def test_interrupted_completion_recovers_original_provenance(
+    store: MemoryObjectStore, monkeypatch: pytest.MonkeyPatch, broken: str
+) -> None:
+    original = store.put
+    key = layout.dataset(RUN) if broken == "dataset" else layout.conduction(RUN)
+
+    def fail(key_: str, data: bytes, *, content_type: str | None = None) -> None:
+        if key_ == key:
+            raise OSError("interrupted projection")
+        original(key_, data, content_type=content_type)
+
+    monkeypatch.setattr(store, "put", fail)
+    first, assistant, _, _ = _execute(store)
+    assert first.phase is RunPhase.FAILED
+    assert not store.exists(layout.manifest(RUN))
+    count = len(assistant.calls)
+    monkeypatch.setattr(store, "put", original)
+    second, _, _, _ = _execute(store, assistant=assistant)
+    assert second.phase is RunPhase.COMPLETE
+    assert len(assistant.calls) == count
+    manifest = Manifest.model_validate_json(store.get(layout.manifest(RUN)))
+    assert manifest.components["attacker:crescendo"] == "scripted-attacker"
+    assert manifest.components["profile_judge_model"] == "stand-in-judge"
+    assert manifest.components["delivery_conducted"] == "1"
+    assert store.exists(layout.dataset(RUN)) and store.exists(layout.conduction(RUN))
+
+
+def test_repeated_runs_never_renew_target_allowance() -> None:
+    store = MemoryObjectStore()
+    _publish(store)
+    spec = _spec(budget={"max_target_calls": 2})
+    store.put(layout.spec(RUN), spec.model_dump_json().encode())
+    assistant = _Assistant()
+    for _ in range(4):
+        outcome, _, _, _ = _execute(store, assistant=assistant)
+        assert outcome.phase is RunPhase.FAILED
+        assert len(assistant.calls) == 2
+        assert json.loads(store.get(outcome.record or ""))["kind"] == "budget_exhausted"
+    assert not store.exists(layout.manifest(RUN))
+    assert len(store.list_prefix(layout.calls_prefix(RUN))) == 4
+
+
+def test_legacy_dataset_without_provenance_cannot_complete(store: MemoryObjectStore) -> None:
+    store.put(layout.dataset(RUN), b"[]")
+    outcome, assistant, _, _ = _execute(store)
+    assert outcome.phase is RunPhase.FAILED
+    assert assistant.calls == []
+    assert not store.exists(layout.manifest(RUN))
+    assert json.loads(store.get(outcome.record or ""))["kind"] == "recovery_incomplete"

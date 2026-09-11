@@ -18,7 +18,6 @@ would reach into gaussia's private exchange and would still not cover a process 
 
 from __future__ import annotations
 
-import contextlib
 import json
 from collections.abc import Iterable, Sequence
 from typing import TYPE_CHECKING
@@ -27,10 +26,11 @@ from gaussia.core.target_assistant import TargetAssistant
 from gaussia.schemas.roastme import TargetResponse
 
 from redteam_contracts.trace import Trace
+from redteam_engine.checkpoints import Checkpoint, RecoveryIncomplete, put_same, read, save
 from redteam_engine.dataset import EXPLOIT_SESSION, RoastDataset
 from redteam_store import layout
 from redteam_store.codec import decode_trace, encode_json
-from redteam_store.interface import ObjectAlreadyExists, ObjectNotFound
+from redteam_store.interface import ObjectNotFound
 from redteam_target.failures import raw_failure
 
 if TYPE_CHECKING:
@@ -131,63 +131,95 @@ class ResumingTarget(TargetAssistant):  # type: ignore[misc]  # gaussia ships no
 
 
 def closed_conduction(store: ObjectStore, run_id: str) -> dict[str, str]:
-    """What an earlier attempt's conduction reported, for a run whose dataset is already in the
-    store."""
-    try:
-        recorded = {
-            str(k): str(v) for k, v in json.loads(store.get(layout.conduction(run_id))).items()
-        }
-    except ObjectNotFound:
-        recorded = {}
-    return {**recorded, "conduct": "closed by an earlier attempt: the dataset was in the store"}
+    """Complete partial projections, or refuse a legacy dataset without provenance."""
+    key = layout.recovery(run_id, "conduction")
+    if store.exists(key):
+        record = read(store, key)
+        project_conduction(store, run_id, record)
+        components = record.components
+    else:
+        try:
+            components = json.loads(store.get(layout.conduction(run_id)))
+            if not isinstance(components, dict) or not components:
+                raise ValueError("missing provenance")
+            for session in json.loads(store.get(layout.dataset(run_id))):
+                RoastDataset.model_validate(session)
+        except (ObjectNotFound, ValueError) as missing:
+            raise RecoveryIncomplete(
+                "dataset has no recoverable conduction provenance; start a new run"
+            ) from missing
+    return {
+        **components,
+        "conduct": "closed by an earlier attempt: verified dataset and provenance",
+    }
+
+
+def project_conduction(store: ObjectStore, run_id: str, record: Checkpoint) -> None:
+    put_same(
+        store,
+        layout.dataset(run_id),
+        encode_json([session.model_dump(mode="json") for session in record.sessions]),
+    )
+    put_same(store, layout.conduction(run_id), encode_json(record.components))
+
+
+def remember_conduction(
+    store: ObjectStore, run_id: str, components: dict[str, str], sessions: list[RoastDataset]
+) -> None:
+    record = Checkpoint(components=components, sessions=sessions)
+    save(store, layout.recovery(run_id, "conduction"), record)
+    project_conduction(store, run_id, record)
 
 
 def remember_exploit(
     store: ObjectStore, run_id: str, searched: dict[str, str], sessions: list[RoastDataset]
 ) -> None:
-    """The search was attempted: say how it went, and keep its session, before anything else can
-    fail.
+    """The commit includes the sessions, even when the valid answer is an empty list."""
+    record = Checkpoint(
+        components=searched,
+        sessions=[
+            session for session in sessions if session.session_id == f"{run_id}:{EXPLOIT_SESSION}"
+        ],
+    )
+    save(store, layout.recovery(run_id, "exploit"), record)
+    _project_exploit(store, run_id, record)
 
-    Written from inside conduction, the moment the report exists, because the dataset is assembled
-    later. An attempt that died between the two would otherwise resume by searching again --
-    generated queries against the assistant, twice -- or by losing what the first search found. The
-    marker is what `exploiter_for` reads, and it carries what the search reported about itself --
-    `ran` with its categories, or `failed` and why -- so a relaunch that skips the search still
-    puts the search's provenance in the manifest. A failed search is remembered as much as one that
-    ran: it, too, sent queries. The session is what the dataset gets back.
-    """
-    with contextlib.suppress(ObjectAlreadyExists):
-        store.put(
-            layout.searched(run_id),
-            json.dumps({"components": searched}).encode(),
-            content_type="application/json",
+
+def _project_exploit(store: ObjectStore, run_id: str, record: Checkpoint) -> None:
+    for session in record.sessions:
+        put_same(
+            store,
+            layout.session(run_id, EXPLOIT_SESSION),
+            encode_json(session.model_dump(mode="json")),
         )
-    for session in sessions:
-        if session.session_id == f"{run_id}:{EXPLOIT_SESSION}":
-            with contextlib.suppress(ObjectAlreadyExists):
-                store.put(
-                    layout.session(run_id, EXPLOIT_SESSION),
-                    encode_json(session.model_dump(mode="json")),
-                    content_type="application/json",
-                )
+    put_same(store, layout.searched(run_id), encode_json({"components": record.components}))
 
 
 def remembered_exploit(
     store: ObjectStore, run_id: str
 ) -> tuple[dict[str, str], list[RoastDataset]]:
-    """What an earlier attempt's search reported about itself, and its session if it left one.
-
-    Both empty when no earlier attempt searched. The components outrank this attempt's own
-    "skipped: an earlier attempt already exploited": the manifest describes the run, and the run's
-    search ran -- or failed -- once.
-    """
+    key = layout.recovery(run_id, "exploit")
+    if store.exists(key):
+        record = read(store, key)
+        _project_exploit(store, run_id, record)
+        return record.components, record.sessions
     try:
         marker = json.loads(store.get(layout.searched(run_id)))
     except ObjectNotFound:
+        if store.exists(layout.recovery(run_id, "exploit-started")) or store.exists(
+            layout.exploit(run_id)
+        ):
+            raise RecoveryIncomplete(
+                "search started without a recoverable checkpoint; start a new run"
+            ) from None
         return {}, []
     components = {str(k): str(v) for k, v in (marker.get("components") or {}).items()}
     try:
         raw = store.get(layout.session(run_id, EXPLOIT_SESSION))
-    except ObjectNotFound:
-        return components, []
-    return components, [RoastDataset.model_validate(json.loads(raw))]
+    except ObjectNotFound as missing:
+        raise RecoveryIncomplete(
+            "legacy search has no recoverable session; start a new run"
+        ) from missing
+    if not components:
+        raise RecoveryIncomplete("legacy search has no provenance; start a new run")
+    return components, [RoastDataset.model_validate_json(raw)]

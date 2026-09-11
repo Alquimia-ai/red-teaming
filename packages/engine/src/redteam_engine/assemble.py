@@ -99,7 +99,7 @@ def write_failure(
         n_traces=n_traces,
         resumed=resumed,
         dataset=layout.dataset(run_id) if store.exists(layout.dataset(run_id)) else None,
-        kind=typed.kind if typed is not None else None,
+        kind=typed.kind if typed is not None else getattr(error, "kind", None),
         failure=typed.failure if typed is not None else None,
     )
     key = layout.failure(run_id, attempt)
