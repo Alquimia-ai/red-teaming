@@ -63,8 +63,10 @@ class Settings(BaseSettings):
     """Absent together for a deployment that authenticates through the platform -- an IAM role, a
     workload identity -- and lets the client's default credential chain answer."""
 
-    runner_image: str = "alquimiaai/red-teaming-runner:latest"
-    """The image one run is launched from. One process per run, whatever the backend."""
+    runner_image: str = "ghcr.io/alquimia-ai/red-teaming-runner:latest"
+    """The image one run is launched from. One process per run, whatever the backend. Published as
+    a package of the repository on GitHub's container registry; a deployment that pins names the
+    version or the `sha-<7>` tag here."""
 
     docker_network: str | None = None
     """Which network a launched container joins, for the docker backend. A field rather than an

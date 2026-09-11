@@ -46,7 +46,7 @@ def test_the_defaults_are_the_appliance_s(monkeypatch: pytest.MonkeyPatch) -> No
     assert settings.dispatch_backend is DispatchBackend.DOCKER
     assert settings.secrets_backend is SecretsBackend.ENV
     assert settings.s3_bucket == "red-teaming"
-    assert settings.runner_image.startswith("alquimiaai/red-teaming-runner")
+    assert settings.runner_image.startswith("ghcr.io/alquimia-ai/red-teaming-runner")
 
 
 def test_a_value_nothing_serves_is_refused_at_load(monkeypatch: pytest.MonkeyPatch) -> None:

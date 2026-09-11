@@ -43,7 +43,7 @@ services:
 
   # ---- the gate ---------------------------------------------------------------------------
   api:
-    image: ${REDTEAM_API_IMAGE:-alquimiaai/red-teaming-api:latest}
+    image: ${REDTEAM_API_IMAGE:-ghcr.io/alquimia-ai/red-teaming-api:latest}
     build: { context: ../.., dockerfile: apps/api/Dockerfile }
     depends_on:
       minio-seed: { condition: service_completed_successfully }
@@ -56,7 +56,7 @@ services:
       <<: *store
       # The API launches one runner per run through the Docker socket. Same lifecycle as a Job.
       REDTEAM_DISPATCH_BACKEND: docker
-      REDTEAM_RUNNER_IMAGE: ${REDTEAM_RUNNER_IMAGE:-alquimiaai/red-teaming-runner:latest}
+      REDTEAM_RUNNER_IMAGE: ${REDTEAM_RUNNER_IMAGE:-ghcr.io/alquimia-ai/red-teaming-runner:latest}
       # The runner joins this project's network, so it reaches minio and the target by name.
       REDTEAM_DOCKER_NETWORK: ${REDTEAM_DOCKER_NETWORK:-red-teaming_default}
       REDTEAM_SECRETS_BACKEND: env
