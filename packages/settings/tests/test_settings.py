@@ -79,6 +79,7 @@ def test_the_kubernetes_backend_s_knobs_have_appliance_defaults(
 
     assert settings.k8s_runner_secret == "red-teaming-runner-secrets"
     assert settings.k8s_runner_config_map is None and settings.k8s_service_account is None
+    assert settings.k8s_store_secret is None and settings.k8s_image_pull_secret is None
     assert settings.k8s_job_backoff_limit == 2
     assert settings.k8s_job_ttl_seconds == 86400
 

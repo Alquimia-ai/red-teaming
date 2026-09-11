@@ -84,6 +84,16 @@ class Settings(BaseSettings):
     """A ConfigMap the Job reads its `REDTEAM_*` wiring from, when the deployment keeps it there
     rather than passing it per launch."""
 
+    k8s_store_secret: str | None = None
+    """The Secret a run's pod reads the store's credentials from, whole, through `envFrom`:
+    `REDTEAM_S3_ACCESS_KEY` and `REDTEAM_S3_SECRET_KEY`. The platform's credential, not the run's,
+    which is why it travels apart from the run's references. Absent on a cluster where the pod's
+    own identity reaches the store -- a role, a workload identity."""
+
+    k8s_image_pull_secret: str | None = None
+    """The registry credential a run's pod pulls the runner image with. Absent for a public
+    package."""
+
     k8s_service_account: str | None = None
     """The service account a run's pod runs as. Absent takes the namespace's default."""
 
