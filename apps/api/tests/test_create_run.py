@@ -535,3 +535,83 @@ def test_invalid_prior_is_refused_before_acceptance(
     assert response.status_code == 400
     assert not store.exists(layout.spec("invalid-prior"))
     assert dispatcher.launched == []
+
+
+def test_identical_retry_uses_frozen_catalogue_after_strategy_removal(
+    client: TestClient, store: MemoryObjectStore
+) -> None:
+    asked = _spec("frozen-retry", strategies=["ask-identity"])
+    assert client.post("/runs", json=asked).status_code == 202
+    bundle = load_bundle(BASELINE)
+    revised = bundle.catalogue.model_copy(
+        update={"strategies": [s for s in bundle.catalogue.strategies if s.id != "ask-identity"]}
+    )
+    assets.publish(
+        store,
+        CATALOGUE,
+        revised,
+        bundle.contract,
+        *declared_engines(bundle.entity_kinds),
+        needs_base=sorted(assets.needs_a_base(revised, bundle.needs_base)),
+        delivery=bundle.delivery,
+    )
+    retry = client.post("/runs", json=asked)
+    assert retry.status_code == 202
+    assert retry.json()["catalogue_versions"] == {CATALOGUE: 1}
+    assert client.post("/runs", json={**asked, "run_id": "new-retry"}).status_code == 400
+    assert (
+        client.post("/runs", json={**asked, "catalogue_versions": {CATALOGUE: 2}}).status_code
+        == 409
+    )
+
+
+@pytest.mark.parametrize("different", [False, True])
+def test_concurrent_acceptance_compares_the_winning_frozen_spec(
+    client: TestClient, store: MemoryObjectStore, monkeypatch: pytest.MonkeyPatch, different: bool
+) -> None:
+    original = store.put
+    asked = _spec("concurrent")
+
+    def interleave(key: str, data: bytes, *, content_type: str | None = None) -> None:
+        if key == layout.spec("concurrent"):
+            winner = json.loads(data)
+            if different:
+                winner["replicas"] = 2
+            original(key, json.dumps(winner).encode())
+        original(key, data, content_type=content_type)
+
+    monkeypatch.setattr(store, "put", interleave)
+    response = client.post("/runs", json=asked)
+    assert response.status_code == (409 if different else 202)
+
+
+def test_validation_race_rechecks_an_accepted_request(
+    client: TestClient, store: MemoryObjectStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from fastapi import HTTPException
+
+    import redteam_api.main as module
+
+    asked = _spec("validation-race")
+    original = module._gate
+
+    def interleave(spec: RunSpec) -> tuple[RunSpec, str]:
+        pinned, _ = original(spec)
+        store.put(layout.spec(spec.run_id), pinned.model_dump_json().encode())
+        raise HTTPException(status_code=400, detail="catalogue changed")
+
+    monkeypatch.setattr(module, "_gate", interleave)
+    assert client.post("/runs", json=asked).status_code == 202
+
+
+def test_retry_of_a_complete_run_does_not_launch_another_runner(
+    client: TestClient, store: MemoryObjectStore, dispatcher: RecordingDispatcher
+) -> None:
+    asked = _spec("already-complete")
+    assert client.post("/runs", json=asked).status_code == 202
+    store.put(layout.manifest("already-complete"), b"{}")
+    before = list(dispatcher.launched)
+    response = client.post("/runs", json=asked)
+    assert response.status_code == 202 and response.json()["launched"] is False
+    assert dispatcher.launched == before
+    assert client.post("/runs/already-complete:resume").status_code == 409

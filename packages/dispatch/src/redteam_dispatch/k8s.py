@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import os
 import ssl
+import time
 from collections.abc import Callable, Mapping, Sequence
 from http import HTTPStatus
 from pathlib import Path
@@ -192,21 +193,92 @@ class K8sJobDispatcher:
         body = self.manifest(run_id, env=env, secret_refs=secret_refs)
         try:
             with self._client() as client:
-                created = client.post(self._jobs, json=body)
+                for _ in range(3):
+                    created = client.post(self._jobs, json=body)
+                    if created.status_code == HTTPStatus.CONFLICT:
+                        self._remove_finished(client, run_id)
+                        continue
+                    if created.is_error:
+                        raise DispatchError(
+                            f"the API server refused to create {name}: "
+                            f"{created.status_code} {created.text[:300]}"
+                        )
+                    uid = str(((created.json().get("metadata") or {}).get("uid")) or name)
+                    return JobHandle(run_id=run_id, backend=BACKEND, identifier=uid)
         except httpx.HTTPError as down:
             raise DispatchError(
                 f"the API server could not be reached to create {name}: "
                 f"{type(down).__name__}: {down}"
             ) from down
-        if created.status_code == HTTPStatus.CONFLICT:
-            raise AlreadyRunning(f"a Job named {name} already exists in {self._namespace!r}")
-        if created.is_error:
-            raise DispatchError(
-                f"the API server refused to create {name} in {self._namespace!r}: "
-                f"{created.status_code} {created.text[:300]}"
-            )
-        uid = str(((created.json().get("metadata") or {}).get("uid")) or name)
-        return JobHandle(run_id=run_id, backend=BACKEND, identifier=uid)
+        raise DispatchError(f"Job {name} changed during launch; retry the request")
+
+    def _remove_finished(self, client: httpx.Client, run_id: str) -> None:
+        """Remove only the observed terminal Job, never another request's replacement."""
+        name = job_name(run_id)
+        path = f"{self._jobs}/{name}"
+        fetched = client.get(path)
+        if fetched.status_code == HTTPStatus.NOT_FOUND:
+            return  # TTL cleanup or another resumer removed it; race on the same name again.
+        if fetched.is_error:
+            raise DispatchError(f"cannot inspect Job {name}: {fetched.status_code}")
+        job = fetched.json()
+        metadata = job.get("metadata") or {}
+        if metadata.get("deletionTimestamp"):
+            raise DispatchError(f"Job {name} is still being removed; retry the request")
+        conditions = (job.get("status") or {}).get("conditions") or []
+        terminal = any(
+            condition.get("type") in {"Failed", "Complete"}
+            and str(condition.get("status")) == "True"
+            for condition in conditions
+        )
+        if not terminal:
+            raise AlreadyRunning(f"a Job named {name} is still active in {self._namespace!r}")
+        labels = metadata.get("labels") or {}
+        if labels.get(LABEL_NAME) != APP_LABEL or labels.get(LABEL_RUN) != run_id:
+            raise DispatchError(f"Job {name} is not a managed runner; refusing replacement")
+        uid = metadata.get("uid")
+        revision = metadata.get("resourceVersion")
+        if not uid or not revision:
+            raise DispatchError(f"Job {name} has no verifiable identity; refusing replacement")
+        # Older Kubernetes releases can mark a Job terminal while its Pods still run.
+        pods = client.get(
+            f"/api/v1/namespaces/{self._namespace}/pods",
+            params={"labelSelector": f"{LABEL_RUN}={run_id}"},
+        )
+        if pods.is_error:
+            raise DispatchError(f"cannot inspect Pods for Job {name}: {pods.status_code}")
+        items = pods.json().get("items")
+        if not isinstance(items, list) or pods.json().get("metadata", {}).get("continue"):
+            raise DispatchError(f"incomplete Pod listing for Job {name}; retry the request")
+        if any(
+            (pod.get("status") or {}).get("phase") not in {"Failed", "Succeeded"} for pod in items
+        ):
+            raise DispatchError(f"Job {name} still has unfinished Pods; retry the request")
+        deleted = client.request(
+            "DELETE",
+            path,
+            json={
+                "apiVersion": "v1",
+                "kind": "DeleteOptions",
+                "preconditions": {"uid": uid, "resourceVersion": revision},
+                "propagationPolicy": "Foreground",
+            },
+        )
+        if deleted.status_code in {HTTPStatus.NOT_FOUND, HTTPStatus.CONFLICT}:
+            return  # A concurrent resumer won; re-read after trying the unique name.
+        if deleted.is_error:
+            raise DispatchError(f"cannot remove terminal Job {name}: {deleted.status_code}")
+        # Bound the wait; an unresolved deletion is not permission to create another runner.
+        for _ in range(5):
+            remaining = client.get(path)
+            if remaining.status_code == HTTPStatus.NOT_FOUND:
+                return
+            if remaining.is_error:
+                raise DispatchError(f"cannot verify removal of Job {name}")
+            if (remaining.json().get("metadata") or {}).get("uid") != uid:
+                return  # The name already belongs to a concurrent resumer's Job.
+            time.sleep(0.1)
+        raise DispatchError(f"Job {name} is still being removed; retry the request")
 
     def status(self, run_id: str) -> JobState:
         """What the Job's status says, read off its conditions first and its counters second.

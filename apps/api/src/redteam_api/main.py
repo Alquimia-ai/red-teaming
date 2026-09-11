@@ -203,28 +203,34 @@ def create_run(spec: RunSpec) -> AcceptedRun:
     spec holds resolved.
     """
     from redteam_api import deps
+    from redteam_contracts.run_id import check
     from redteam_store import layout
     from redteam_store.interface import ObjectAlreadyExists
 
-    asked = spec
-    pinned, _ = _gate(spec)
     try:
-        deps.store().put(
-            layout.spec(pinned.run_id),
-            pinned.model_dump_json(indent=2).encode(),
-            content_type="application/json",
-        )
-    except ObjectAlreadyExists:
-        frozen = RunSpec.model_validate_json(deps.store().get(layout.spec(pinned.run_id)))
-        differing = _fields_that_differ(asked, frozen)
-        if differing:
-            raise HTTPException(
-                status_code=409,
-                detail=f"run {pinned.run_id!r} is already frozen with a different spec; the retry "
-                f"differs in {differing}. A retry has to repeat the request; a change needs a "
-                f"new run id.",
-            ) from None
-        pinned = frozen
+        check(spec.run_id)
+    except ValueError as invalid:
+        raise HTTPException(status_code=400, detail=str(invalid)) from invalid
+
+    pinned = _existing_run(spec)
+    if pinned is None:
+        try:
+            pinned, _ = _gate(spec)
+        except HTTPException:
+            # Another request can freeze this id while the current catalogue is changing.
+            pinned = _existing_run(spec)
+            if pinned is None:
+                raise
+        else:
+            try:
+                deps.store().put(
+                    layout.spec(pinned.run_id),
+                    pinned.model_dump_json(indent=2).encode(),
+                    content_type="application/json",
+                )
+            except ObjectAlreadyExists:
+                pinned = _existing_run(spec)
+                assert pinned is not None  # an append-only spec cannot disappear
 
     launched = _launch(pinned)
     return AcceptedRun(
@@ -238,12 +244,35 @@ def create_run(spec: RunSpec) -> AcceptedRun:
     )
 
 
+def _existing_run(asked: RunSpec) -> RunSpec | None:
+    """Retries compare against the accepted identity, without consulting mutable latest assets."""
+    from redteam_api import deps
+    from redteam_store import layout
+    from redteam_store.interface import ObjectNotFound
+
+    try:
+        frozen = RunSpec.model_validate_json(deps.store().get(layout.spec(asked.run_id)))
+    except ObjectNotFound:
+        return None
+    differing = _fields_that_differ(asked, frozen)
+    if differing:
+        raise HTTPException(
+            status_code=409,
+            detail=f"run {asked.run_id!r} is already frozen with a different spec; "
+            f"the retry differs in {differing}. A change needs a new run id.",
+        )
+    return frozen
+
+
 def _launch(spec: RunSpec) -> bool:
     """Ask the platform for one runner. False when it refused a second one for a run whose first is
     still running -- the uniqueness invariant working, not an error."""
     from redteam_api import deps
     from redteam_dispatch import AlreadyRunning, DispatchError
+    from redteam_store import layout
 
+    if deps.store().exists(layout.manifest(spec.run_id)):
+        return False
     try:
         deps.dispatcher().launch(spec.run_id, secret_refs=deps.secret_refs_for(spec))
     except AlreadyRunning:
