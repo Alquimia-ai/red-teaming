@@ -1,0 +1,46 @@
+# The platform on GKE. The store is Cloud Storage through its S3-compatible endpoint with HMAC
+# keys -- the store speaks S3 and nothing else, on purpose -- and the pods carry a Google service
+# account through Workload Identity for everything else they reach.
+images:
+  pullSecret: red-teaming-registry
+
+api:
+  replicas: 2
+  service:
+    type: ClusterIP
+    nodePort: null
+  ingress:
+    enabled: true
+    className: gce-internal
+    host: red-teaming.example.internal
+    annotations: {}
+    tls: []
+
+store:
+  bucket: acme-red-teaming
+  region: ""
+  # Cloud Storage's S3-compatible endpoint. Conditional writes (`If-None-Match: *`) are honoured,
+  # which `S3ObjectStore.verify()` proves at startup either way.
+  endpoint: https://storage.googleapis.com
+  # An HMAC key pair for a service account with Storage Object Admin on the bucket, kept in the
+  # Secret `store.secretName`, created out of band (or set here for a lab).
+  accessKey: ""
+  secretKey: ""
+
+minio:
+  enabled: false
+
+serviceAccounts:
+  api:
+    annotations:
+      iam.gke.io/gcp-service-account: red-teaming@acme.iam.gserviceaccount.com
+  runner:
+    annotations:
+      iam.gke.io/gcp-service-account: red-teaming@acme.iam.gserviceaccount.com
+
+runner:
+  secretName: red-teaming-runner-secrets
+  secrets: {}
+
+brainRegistry:
+  secretRef: BRAIN_REGISTRY_CREDENTIALS

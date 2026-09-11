@@ -37,6 +37,35 @@ jobs:
         # Rendered from the workspace closure; a hand edit is a drift the guard also refuses.
         run: uv run python scripts/render_dockerfiles.py --check
 
+  charts:
+    # The charts render on every change, with the appliance's and each cloud's values, and what
+    # they render is checked against what the dispatcher and the seed expect.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.16.3
+      - run: uv python install 3.12
+      - run: uv sync --all-packages
+      - name: Lint
+        run: |
+          helm lint deploy/charts/red-teaming-stack
+          helm lint deploy/charts/red-teaming-models -f deploy/catalog/models/qwen3-8b.yaml
+      - name: Render
+        run: |
+          for values in deploy/appliance/values-appliance.yaml deploy/cloud/values-eks.yaml deploy/cloud/values-gke.yaml; do
+            helm template red-teaming deploy/charts/red-teaming-stack --namespace red-teaming -f "$values" > /dev/null
+          done
+          helm template red-teaming-models deploy/charts/red-teaming-models --namespace red-teaming \
+            -f deploy/catalog/models/qwen3-8b.yaml -f deploy/catalog/models/qwen3-embedding-0.6b.yaml \
+            -f deploy/catalog/hardware/l40s-48g.yaml > /dev/null
+      - name: Guards over the rendered charts
+        run: uv run pytest -q tests/guards/test_charts.py
+
   cli-zipapp:
     # The command line ships as one file per platform on a release; building it here on every change
     # is what keeps that release step from being the first time anybody tries.

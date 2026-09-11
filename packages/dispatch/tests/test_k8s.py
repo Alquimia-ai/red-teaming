@@ -42,6 +42,8 @@ def _dispatcher(server: _ApiServer, **overrides: Any) -> K8sJobDispatcher:
         "client": server.client,
         "env": {"REDTEAM_STORE_BACKEND": "s3"},
         "config_map": "runner-config",
+        "store_secret": "store-creds",
+        "image_pull_secret": "ghcr-pull",
         "service_account": "red-teaming-runner",
         "backoff_limit": 2,
         "ttl_seconds": 3600,
@@ -72,7 +74,11 @@ def test_a_launch_submits_one_job_named_for_the_run() -> None:
     [container] = pod["containers"]
     assert container["image"] == "ghcr.io/alquimia-ai/red-teaming-runner:1.0.0"
     assert container["args"] == ["run", "run-1"], "the image's entrypoint is the runner"
-    assert container["envFrom"] == [{"configMapRef": {"name": "runner-config"}}]
+    assert container["envFrom"] == [
+        {"configMapRef": {"name": "runner-config"}},
+        {"secretRef": {"name": "store-creds"}},
+    ]
+    assert pod["imagePullSecrets"] == [{"name": "ghcr-pull"}]
     assert handle.identifier == "uid-1" and handle.backend == "k8s_job"
 
 
@@ -97,11 +103,18 @@ def test_no_credential_enters_the_job_spec() -> None:
 
 def test_optional_wiring_is_absent_when_not_declared() -> None:
     server = _ApiServer()
-    _dispatcher(server, config_map=None, service_account=None, env=None).launch("run-1")
+    _dispatcher(
+        server,
+        config_map=None,
+        store_secret=None,
+        image_pull_secret=None,
+        service_account=None,
+        env=None,
+    ).launch("run-1")
 
     job = json.loads(server.requests[0].content)
     pod = job["spec"]["template"]["spec"]
-    assert "serviceAccountName" not in pod
+    assert "serviceAccountName" not in pod and "imagePullSecrets" not in pod
     assert "envFrom" not in pod["containers"][0]
     assert pod["containers"][0]["env"] == []
 

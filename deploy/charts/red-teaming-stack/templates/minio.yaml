@@ -1,0 +1,150 @@
+{{- if .Values.minio.enabled }}
+# The store, on the appliance: one MinIO, one volume, the bucket created once. In the cloud this is
+# off and `store.endpoint` names the provider's service. The volume is the evidence: a chart
+# uninstall leaves the claim behind on purpose (`helm.sh/resource-policy: keep`).
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: red-teaming-minio-data
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: red-teaming-minio
+    {{- include "red-teaming.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/resource-policy: keep
+spec:
+  accessModes: ["ReadWriteOnce"]
+  {{- with .Values.minio.storage.className }}
+  storageClassName: {{ . }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.minio.storage.size }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: red-teaming-minio
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: red-teaming-minio
+    {{- include "red-teaming.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  strategy: { type: Recreate }
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: red-teaming-minio
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: red-teaming-minio
+        {{- include "red-teaming.labels" . | nindent 8 }}
+    spec:
+      containers:
+        - name: minio
+          image: {{ .Values.minio.image | quote }}
+          args: ["server", "/data", "--console-address", ":9001"]
+          envFrom:
+            - secretRef:
+                name: {{ .Values.store.secretName }}
+          ports:
+            - name: api
+              containerPort: 9000
+            - name: console
+              containerPort: 9001
+          readinessProbe:
+            httpGet: { path: /minio/health/ready, port: api }
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: { path: /minio/health/live, port: api }
+            initialDelaySeconds: 15
+            periodSeconds: 15
+          resources:
+            {{- toYaml .Values.minio.resources | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: /data
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: red-teaming-minio-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: red-teaming-minio
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: red-teaming-minio
+    {{- include "red-teaming.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: red-teaming-minio
+    app.kubernetes.io/instance: {{ .Release.Name }}
+  ports:
+    - name: api
+      port: 9000
+      targetPort: api
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: red-teaming-minio-console
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: red-teaming-minio
+    {{- include "red-teaming.labels" . | nindent 4 }}
+spec:
+  type: NodePort
+  selector:
+    app.kubernetes.io/name: red-teaming-minio
+    app.kubernetes.io/instance: {{ .Release.Name }}
+  ports:
+    - name: console
+      port: 9001
+      targetPort: console
+      nodePort: {{ .Values.minio.console.nodePort }}
+---
+# The bucket, created once the server answers. A hook, so it runs on install and on upgrade and
+# `--ignore-existing` makes the second run a no-op.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: red-teaming-minio-buckets
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: red-teaming-minio
+    {{- include "red-teaming.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/hook: post-install,post-upgrade
+    helm.sh/hook-weight: "-10"
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 20
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: red-teaming-minio
+        {{- include "red-teaming.labels" . | nindent 8 }}
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: mc
+          image: {{ .Values.minio.mcImage | quote }}
+          envFrom:
+            - secretRef:
+                name: {{ .Values.store.secretName }}
+          command: ["/bin/sh", "-c"]
+          args:
+            - >-
+              until mc alias set local http://red-teaming-minio:9000 "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD"; do sleep 2; done &&
+              mc mb --ignore-existing local/{{ .Values.store.bucket }} &&
+              {{- if .Values.receiver.enabled }}
+              mc mb --ignore-existing local/{{ .Values.receiver.bucket }} &&
+              {{- end }}
+              echo buckets ready
+{{- end }}

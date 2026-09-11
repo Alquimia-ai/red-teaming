@@ -63,6 +63,8 @@ def build_dispatcher(
             secret_name=settings.k8s_runner_secret,
             env=env,
             config_map=settings.k8s_runner_config_map,
+            store_secret=settings.k8s_store_secret,
+            image_pull_secret=settings.k8s_image_pull_secret,
             service_account=settings.k8s_service_account,
             backoff_limit=settings.k8s_job_backoff_limit,
             ttl_seconds=settings.k8s_job_ttl_seconds,

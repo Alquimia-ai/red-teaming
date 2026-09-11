@@ -25,6 +25,8 @@ class _Settings:
     k8s_namespace: str = "attacks"
     k8s_runner_secret: str = "runner-secrets"
     k8s_runner_config_map: str | None = "runner-config"
+    k8s_store_secret: str | None = "store-creds"
+    k8s_image_pull_secret: str | None = "ghcr-pull"
     k8s_service_account: str | None = "red-teaming-runner"
     k8s_job_backoff_limit: int = 3
     k8s_job_ttl_seconds: int = 600
@@ -44,6 +46,7 @@ def test_each_backend_builds_its_dispatcher() -> None:
     assert docker._env == {"A": "1"}
     assert isinstance(k8s, K8sJobDispatcher)
     assert k8s._namespace == "attacks" and k8s._secret == "runner-secrets"
+    assert k8s._store_secret == "store-creds" and k8s._image_pull_secret == "ghcr-pull"
     assert k8s._backoff_limit == 3 and k8s._ttl_seconds == 600
 
 

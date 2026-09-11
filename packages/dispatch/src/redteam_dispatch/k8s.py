@@ -97,6 +97,9 @@ class K8sJobDispatcher:
         env: Literal, non-secret environment every runner gets -- the store's endpoint and bucket.
         config_map: A ConfigMap the runner reads its wiring from, when the deployment keeps it
             there rather than passing it here.
+        store_secret: A Secret the runner reads the store's credentials from, whole -- the
+            platform's credential, apart from the run's references.
+        image_pull_secret: The registry credential the pod pulls the runner image with.
         service_account: The identity the runner's pod runs as. Absent takes the namespace default.
         backoff_limit: How many relaunches the platform gives a runner that exits non-zero.
         ttl_seconds: How long a finished Job stays before the platform removes it.
@@ -111,6 +114,8 @@ class K8sJobDispatcher:
         client: Callable[[], httpx.Client] | None = None,
         env: Mapping[str, str] | None = None,
         config_map: str | None = None,
+        store_secret: str | None = None,
+        image_pull_secret: str | None = None,
         service_account: str | None = None,
         backoff_limit: int = 2,
         ttl_seconds: int = 86400,
@@ -121,6 +126,8 @@ class K8sJobDispatcher:
         self._client = client or in_cluster_client()
         self._env = dict(env or {})
         self._config_map = config_map
+        self._store_secret = store_secret
+        self._image_pull_secret = image_pull_secret
         self._service_account = service_account
         self._backoff_limit = backoff_limit
         self._ttl_seconds = ttl_seconds
@@ -150,11 +157,19 @@ class K8sJobDispatcher:
             "args": ["run", run_id],
             "env": environment,
         }
+        env_from: list[dict[str, Any]] = []
         if self._config_map:
-            container["envFrom"] = [{"configMapRef": {"name": self._config_map}}]
+            env_from.append({"configMapRef": {"name": self._config_map}})
+        if self._store_secret:
+            # The store's credentials, whole: the platform's, and the same ones the API holds.
+            env_from.append({"secretRef": {"name": self._store_secret}})
+        if env_from:
+            container["envFrom"] = env_from
         pod: dict[str, Any] = {"restartPolicy": "Never", "containers": [container]}
         if self._service_account:
             pod["serviceAccountName"] = self._service_account
+        if self._image_pull_secret:
+            pod["imagePullSecrets"] = [{"name": self._image_pull_secret}]
         return {
             "apiVersion": "batch/v1",
             "kind": "Job",

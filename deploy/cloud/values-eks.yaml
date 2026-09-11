@@ -1,0 +1,51 @@
+# The platform on EKS. What changes from the appliance: the store is S3 itself, reached through the
+# pods' own identity (IRSA) rather than a key; the API sits behind an ingress; the models are
+# hosted, or served by the models chart on a GPU node group.
+images:
+  pullSecret: red-teaming-registry
+  # api: ghcr.io/alquimia-ai/red-teaming-api:0.1.0
+  # runner: ghcr.io/alquimia-ai/red-teaming-runner:0.1.0
+
+api:
+  replicas: 2
+  service:
+    type: ClusterIP
+    nodePort: null
+  ingress:
+    enabled: true
+    className: alb
+    host: red-teaming.example.com
+    annotations:
+      alb.ingress.kubernetes.io/scheme: internal
+      alb.ingress.kubernetes.io/target-type: ip
+    tls: []
+
+store:
+  bucket: acme-red-teaming
+  region: us-east-1
+  endpoint: ""
+  # No key: both service accounts carry an IAM role through IRSA, and the SDK's default chain
+  # answers. The role needs s3:PutObject (conditional writes work with If-None-Match), GetObject,
+  # ListBucket and HeadObject on the bucket.
+  accessKey: ""
+  secretKey: ""
+
+minio:
+  enabled: false
+
+serviceAccounts:
+  api:
+    annotations:
+      eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/red-teaming
+  runner:
+    annotations:
+      eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/red-teaming
+
+runner:
+  secretName: red-teaming-runner-secrets
+  # Managed by an external secrets operator or applied out of band, holding OPENROUTER_API_KEY,
+  # TARGET_KEY and, when the models chart is deployed on a GPU node group, VLLM_API_KEY.
+  secrets: {}
+
+brainRegistry:
+  secretRef: BRAIN_REGISTRY_CREDENTIALS

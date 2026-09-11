@@ -1,0 +1,6 @@
+# The models chart on the appliance: the node's disk holds the weights, the NVIDIA runtime hands
+# the card over, and every endpoint asks for the key the runner Secret carries as VLLM_API_KEY.
+runtimeClassName: nvidia
+modelsHostPath: /var/lib/red-teaming/models
+hfOffline: true
+apiKeySecret: red-teaming-runner-secrets

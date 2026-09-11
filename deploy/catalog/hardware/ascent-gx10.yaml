@@ -1,0 +1,9 @@
+# A 128 GB unified-memory node. Both models fit with room for long contexts; the utilisations are
+# shares of what vLLM sees as GPU memory on the platform, left conservative so the host keeps its
+# own.
+models:
+  judge:
+    gpuMemoryUtilization: 0.45
+    maxModelLen: 32768
+  embedder:
+    gpuMemoryUtilization: 0.08

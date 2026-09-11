@@ -1,0 +1,37 @@
+# The API's wiring, and the runner's. Two ConfigMaps from one helper, because they are the same
+# store seen from both sides and a runner pointed at a different store would resume against nothing.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: red-teaming-api-config
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: red-teaming-api
+    {{- include "red-teaming.labels" . | nindent 4 }}
+data:
+  {{- include "red-teaming.storeEnv" . | nindent 2 }}
+  REDTEAM_DISPATCH_BACKEND: "k8s_job"
+  REDTEAM_K8S_NAMESPACE: {{ .Release.Namespace | quote }}
+  REDTEAM_RUNNER_IMAGE: {{ .Values.images.runner | quote }}
+  REDTEAM_K8S_RUNNER_SECRET: {{ .Values.runner.secretName | quote }}
+  REDTEAM_K8S_RUNNER_CONFIG_MAP: "red-teaming-runner-config"
+  {{- if include "red-teaming.hasStoreSecret" . }}
+  REDTEAM_K8S_STORE_SECRET: {{ .Values.store.secretName | quote }}
+  {{- end }}
+  {{- with .Values.images.pullSecret }}
+  REDTEAM_K8S_IMAGE_PULL_SECRET: {{ . | quote }}
+  {{- end }}
+  REDTEAM_K8S_SERVICE_ACCOUNT: {{ .Values.serviceAccounts.runner.name | quote }}
+  REDTEAM_K8S_JOB_BACKOFF_LIMIT: {{ .Values.runner.backoffLimit | quote }}
+  REDTEAM_K8S_JOB_TTL_SECONDS: {{ .Values.runner.ttlSecondsAfterFinished | quote }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: red-teaming-runner-config
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: red-teaming-runner
+    {{- include "red-teaming.labels" . | nindent 4 }}
+data:
+  {{- include "red-teaming.storeEnv" . | nindent 2 }}
