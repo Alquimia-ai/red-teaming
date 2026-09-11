@@ -7,46 +7,33 @@ and a manifest that says exactly what was planned, what closed and what failed.
 
 ## Status
 
-The repository is being built in phases, one pull request each. Landed so far: the foundations
-(workspace, conventions, CI, guards, skills), the IO-free core -- `contracts`, `settings`,
-`secrets`, `store` -- the model-facing packages -- `judges` (providers `openrouter` and
-`openai_compatible`, the logprob grader), `knowledge` (read-only brain client), `target` (the
-Alquimia runtime adapter and replay) -- generation: `catalogue` (bundles, the construction
-registry, validation and publishing) and `probes` (one run's probe set, pulled brain, content
-address) -- and conduction: `engine` (the governed door to the target with budget, pacing, retry
-policy and safe mode; conversations an attacker steers inside one exchange; every conversation
-recorded as one trace the instant it closes; closed units replayed on a relaunch; the weakness
-profile and the exploitation report kept as control artifacts; the attack dataset per replica;
-`attack` composing all of it for one run) -- and the first app: `dispatch` (one runner per run
-through docker, a kubernetes Job or a local subprocess, each answering `status()`), `delivery`
-(the bounded, idempotent webhook), `apps/runner` (`redteam-runner run <id>`: generation in
-process, the attack, the manifest, the webhook; exit 1 on a failed attempt so the platform
-relaunches) and `scripts/render_dockerfiles.py` (each app's Dockerfile from its workspace
-closure) -- and the gate: `apps/api` (`POST /runs` validates, freezes and launches; `POST
-/runs:validate` dry-runs the gate; `GET /runs/{id}` derives the phase from the store and the
-liveness from the platform, and reports `stalled` when they disagree; `POST /runs/{id}:resume`
-relaunches; `POST /catalogues` and `/catalogues:validate` publish and check bundles; `/priors`;
-`GET /probes/{digest}`), with the in-process end-to-end (`tests/e2e/test_run_in_process.py`)
-driving the API, the runner, the memory store and recorded answers in one process -- and the
-operator's side: `apps/cli` (`redteam init | local up|down|status|logs | catalogue validate|publish
-| prior publish | run validate|start [--follow]|status|result|list|resume | receiver export`, a
-`.redteam/` workspace, the API as its only door) and `deploy/compose` (minio, the API, the seed, a
-receiver that keeps what it acknowledges, a mock assistant speaking the runtime's inference API;
-the runner created per run through the socket), with `tests/e2e/test_compose.py` (tier `docker`)
-driving the containers through the command line -- and delivery: every push to `develop`
-publishes `ghcr.io/alquimia-ai/red-teaming-{api,runner}` -- packages of this repository -- as
-`develop` and `sha-<7>`; on `main`,
-release-please opens one release pull request per app (`api`, `runner`, `cli`), tags
-`<app>-vX.Y.Z`, publishes the images under the version and `latest`, and attaches the command
-line as a zipapp per platform (`scripts/build_pyz.sh`). The command line is parsed with the
-standard library and rendered with rich; it carries no click. And deployment: `deploy/charts/
-red-teaming-stack` (the API with its RBAC and the wiring it stamps on every run's Job, MinIO or the
-provider's store, the seed as a hook), `deploy/charts/red-teaming-models` (one vLLM Deployment and
-Service per catalog entry, from weights on the node's disk), `deploy/catalog/` (models x hardware,
-composed by helm's map merge), `deploy/appliance/` (k3s, SOPS/age secrets, one idempotent
-`install.sh`, NodePort 30880) and `deploy/cloud/` (EKS and GKE values). The final documentation
-pass and the promotion to `main` land next. Keep this file honest: describe what exists, mark what
-is planned.
+Complete through the first release. What exists, by layer:
+
+- **Core, no IO**: `contracts` (run spec, plan, trace, manifest, contract, failures, run id),
+  `settings` (`REDTEAM_*`), `secrets` (env, file), `store` (append-only object store over memory
+  and S3, the key layout, sidecars, versioned assets, the resume difference).
+- **Models, knowledge, target**: `judges` (providers `openrouter` and `openai_compatible`, the
+  logprob grader with retries, the stand-in, embeddings), `knowledge` (read-only brain client),
+  `target` (the Alquimia runtime adapter, replay, typed failures, the safe-mode gate).
+- **Generation**: `catalogue` (bundles with the contract sidecar, the construction registry,
+  semantic validation, publishing), `probes` (one run's content-addressed set from a pulled brain).
+- **Conduction**: `engine` (the governed door, conversations an attacker steers inside one
+  exchange, recording, resume by replay, control artifacts, the dataset, `attack`).
+- **Platform**: `dispatch` (docker, Kubernetes Job, subprocess; `launch` and `status`), `delivery`
+  (the bounded, idempotent webhook).
+- **Apps**: `runner` (one run, generation to manifest, exit codes for the platform's retry
+  policy), `api` (the gate, publishing, status from the store and the platform, `stalled`,
+  `resume`), `cli` (`redteam`, argparse and rich, no click; the API as its only door).
+- **Delivery**: images as packages of this repository on every push to `develop` and on every
+  release; release-please on `main`, one release per app; the command line as a zipapp per
+  platform.
+- **Deployment**: the local compose stack; the `red-teaming-stack` and `red-teaming-models` Helm
+  charts; the model and hardware catalog; the appliance (k3s, SOPS/age, one install script); EKS
+  and GKE values.
+- **Tests**: the default tier with the guards; `tests/e2e` in process and in containers
+  (`docker`); `tests/live` against a real assistant and judge (`live`).
+
+Keep this file honest: describe what exists, mark what is planned.
 
 ## Repository structure
 
