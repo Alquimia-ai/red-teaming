@@ -25,12 +25,19 @@ PYTHON_IMAGE = "python:3.12-slim"
 UV_IMAGE = "ghcr.io/astral-sh/uv:0.7.10"
 """Pinned, because an unpinned tool image is a build that changes under you."""
 
+SOURCE = "https://github.com/Alquimia-ai/red-teaming"
+"""What the images name as their source. GitHub's container registry files an image under the
+repository the label names, which is what makes it one of the repository's packages."""
+
 DIST_PREFIX = "red-teaming-"
 
 
 @dataclass(frozen=True)
 class App:
     dist: str
+    description: str
+    """One phrase, for the image's description label."""
+
     why: str
     """One or two lines, as a Dockerfile comment, on what this image is for and what it must not
     carry."""
@@ -47,6 +54,7 @@ class App:
 APPS: dict[str, App] = {
     "api": App(
         dist="red-teaming-api",
+        description="The red-teaming API: accepts runs, freezes specs, launches runners",
         service="redteam_api.main:app",
         why=(
             "The HTTP gate. It validates, freezes, launches, publishes and reads, and it does no\n"
@@ -56,6 +64,7 @@ APPS: dict[str, App] = {
     ),
     "runner": App(
         dist="red-teaming-runner",
+        description="The red-teaming runner: one run, from generation to manifest",
         entrypoint="redteam-runner",
         why=(
             "One run, to completion, then exit. The only image where generation and conduction\n"
@@ -116,6 +125,10 @@ def render(app: str) -> str:
 # dependency closure is copied in. What is absent from the image is a structural guarantee, not a
 # convention.
 FROM {PYTHON_IMAGE}
+
+LABEL org.opencontainers.image.source="{SOURCE}" \\
+      org.opencontainers.image.title="red-teaming-{app}" \\
+      org.opencontainers.image.description="{spec.description}"
 
 ENV PYTHONUNBUFFERED=1 \\
     UV_COMPILE_BYTECODE=1 \\
