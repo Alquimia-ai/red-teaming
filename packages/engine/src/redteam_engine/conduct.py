@@ -25,7 +25,9 @@ from typing import Any
 
 from gaussia.schemas.roastme import Probe
 
+from redteam_engine.checkpoints import RecoveryIncomplete
 from redteam_engine.errors import TargetFailure
+from redteam_engine.governed import BudgetExhausted
 from redteam_engine.ledger import FailureLedger
 
 UNGRADED_ALARM_RATIO = 0.25
@@ -181,9 +183,11 @@ def conduct(
         recorded.setdefault("exploit", "skipped: no generator model declared")
     else:
         recorder.phase = EXPLOIT
+        if artifacts is not None:
+            artifacts.start_exploit()
         try:
             report = exploiter.exploit(result.profile)
-        except TargetFailure:
+        except (TargetFailure, BudgetExhausted, RecoveryIncomplete):
             # The channel to the assistant died -- a refused credential, say -- and the policy said
             # the run cannot continue through it. That is an attempt dying, not a search failing:
             # swallowed here, the run would close COMPLETE over a search that never happened and

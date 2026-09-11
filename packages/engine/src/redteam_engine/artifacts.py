@@ -44,6 +44,11 @@ class ControlArtifacts:
             self._store.put(key, encode_json(payload), content_type="application/json")
         return key
 
+    def start_exploit(self) -> None:
+        from redteam_engine.checkpoints import put_same
+
+        put_same(self._store, layout.recovery(self._run_id, "exploit-started"), b'{"version":1}')
+
     def exploit(self, report: Any) -> str:
         """The exploitation report, whole: the ranked categories with their queries, the queries
         over the threshold, and which implementation of each substitutable piece produced them.

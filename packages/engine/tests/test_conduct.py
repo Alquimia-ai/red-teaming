@@ -82,6 +82,9 @@ class _Recorder:
 
 
 class _Artifacts:
+    def start_exploit(self) -> None:
+        pass
+
     """Remembers what it was asked to keep, in order."""
 
     def __init__(self) -> None:

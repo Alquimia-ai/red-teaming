@@ -15,6 +15,7 @@ immutable: once accepted they are not rewritten in place; they are superseded by
 | [006](006-strategies-say-what-deliveries-say-how.md) | Strategies declare what a probe says and deliveries declare how it reaches the target | ✅ Accepted | engine, catalogue, contracts, evidence |
 | [007](007-control-signal-as-control-artifacts-and-typed-transport-failures.md) | Control signal persists as control artifacts and transport failures never close a unit | ✅ Accepted | engine, store, contracts, evidence |
 | [008](008-helm-charts-sops-and-vllm-for-the-appliance.md) | Helm charts with SOPS secrets and vLLM served models for the appliance | ✅ Accepted | deploy, dispatch, settings |
+| [009](009-durable-call-reservations-and-atomic-recovery.md) | Durable call reservations and atomic stage recovery | ✅ Accepted | engine, store, runner |
 
 **Status legend:** ✅ Accepted · 📝 Proposed · 🚫 Deprecated · ↩️ Superseded by ADR-NNN
 
