@@ -121,7 +121,9 @@ def test_optional_wiring_is_absent_when_not_declared() -> None:
 
 def test_a_duplicate_job_is_the_uniqueness_invariant_working() -> None:
     with pytest.raises(AlreadyRunning, match="redteam-run-run-1"):
-        _dispatcher(_ApiServer(create=HTTPStatus.CONFLICT)).launch("run-1")
+        _dispatcher(
+            _ApiServer(create=HTTPStatus.CONFLICT, get=(HTTPStatus.OK, {"status": {"active": 1}}))
+        ).launch("run-1")
 
 
 def test_a_server_that_refuses_is_a_dispatch_error_carrying_its_answer() -> None:
@@ -225,3 +227,164 @@ def test_inside_a_pod_the_client_speaks_to_its_own_server_as_itself(
     (tmp_path / "token").write_text("tok-2\n")
     with factory() as client:
         assert client.headers["Authorization"] == "Bearer tok-2", "rotated tokens are read"
+
+
+def _terminal_job(condition: str = "Failed") -> dict[str, Any]:
+    return {
+        "metadata": {
+            "uid": "old",
+            "resourceVersion": "1",
+            "labels": {
+                "app.kubernetes.io/name": "red-teaming-runner",
+                "red-teaming.alquimia.ai/run-id": "run-1",
+            },
+        },
+        "status": {"conditions": [{"type": condition, "status": "True"}]},
+    }
+
+
+class _ReplacingServer:
+    def __init__(self, condition: str = "Failed") -> None:
+        self.job: dict[str, Any] | None = _terminal_job(condition)
+        self.pods: list[dict[str, Any]] = []
+        self.created = 0
+        self.deleted: list[dict[str, Any]] = []
+        self.replacement_wins = False
+        self.waiting = False
+        self.refuse_pods = False
+
+    def __call__(self, request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/pods"):
+            assert request.url.params["labelSelector"] == "red-teaming.alquimia.ai/run-id=run-1"
+            return httpx.Response(
+                HTTPStatus.FORBIDDEN if self.refuse_pods else HTTPStatus.OK,
+                json={"items": self.pods},
+            )
+        if request.method == "POST":
+            if self.job is not None:
+                return httpx.Response(HTTPStatus.CONFLICT)
+            self.created += 1
+            self.job = {"metadata": {"uid": "new", "resourceVersion": "2"}, "status": {"active": 1}}
+            return httpx.Response(HTTPStatus.CREATED, json=self.job)
+        if request.method == "DELETE":
+            body = json.loads(request.content)
+            self.deleted.append(body)
+            if self.replacement_wins:
+                self.replacement_wins = False
+                self.created += 1
+                self.job = {
+                    "metadata": {"uid": "new", "resourceVersion": "2"},
+                    "status": {"active": 1},
+                }
+                return httpx.Response(HTTPStatus.CONFLICT)
+            assert self.job is not None
+            assert body["preconditions"] == {
+                "uid": self.job["metadata"]["uid"],
+                "resourceVersion": "1",
+            }
+            if self.waiting:
+                self.job["metadata"]["deletionTimestamp"] = "now"
+            else:
+                self.job = None
+            return httpx.Response(HTTPStatus.OK)
+        return (
+            httpx.Response(HTTPStatus.OK, json=self.job)
+            if self.job
+            else httpx.Response(HTTPStatus.NOT_FOUND)
+        )
+
+    def client(self) -> httpx.Client:
+        return httpx.Client(transport=httpx.MockTransport(self), base_url="https://k8s")
+
+
+@pytest.mark.parametrize("condition", ["Failed", "Complete"])
+def test_terminal_jobs_can_be_replaced_before_ttl(condition: str) -> None:
+    server = _ReplacingServer(condition)
+    dispatcher = _dispatcher(_ApiServer(), client=server.client)
+    assert dispatcher.status("run-1") is (
+        JobState.FAILED if condition == "Failed" else JobState.SUCCEEDED
+    )
+    assert dispatcher.launch("run-1").identifier == "new"
+    assert dispatcher.status("run-1") is JobState.RUNNING
+    assert server.created == 1 and len(server.deleted) == 1
+    assert server.deleted[0]["propagationPolicy"] == "Foreground"
+    with pytest.raises(AlreadyRunning):
+        dispatcher.launch("run-1")
+    assert server.created == 1
+
+
+def test_a_concurrent_resumer_cannot_delete_the_winners_new_job() -> None:
+    server = _ReplacingServer()
+    server.replacement_wins = True
+    dispatcher = _dispatcher(_ApiServer(), client=server.client)
+    with pytest.raises(AlreadyRunning):
+        dispatcher.launch("run-1")
+    assert server.created == 1 and len(server.deleted) == 1
+    assert server.deleted[0]["preconditions"]["uid"] == "old"
+    assert dispatcher.status("run-1") is JobState.RUNNING
+
+
+@pytest.mark.parametrize("phase", ["Running", "Pending", "Unknown"])
+def test_terminal_condition_does_not_allow_overlapping_live_pods(phase: str) -> None:
+    server = _ReplacingServer()
+    server.pods = [{"status": {"phase": phase}}]
+    with pytest.raises(DispatchError, match="unfinished Pods"):
+        _dispatcher(_ApiServer(), client=server.client).launch("run-1")
+    assert server.created == 0 and server.deleted == []
+
+
+def test_an_unfinished_deletion_is_retryable_not_a_second_job(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import time
+
+    monkeypatch.setattr(time, "sleep", lambda _: None)
+    server = _ReplacingServer()
+    server.waiting = True
+    dispatcher = _dispatcher(_ApiServer(), client=server.client)
+    for _ in range(2):
+        with pytest.raises(DispatchError, match="still being removed"):
+            dispatcher.launch("run-1")
+    assert server.created == 0 and len(server.deleted) == 1
+
+
+def test_unavailable_pod_status_cannot_authorize_replacement() -> None:
+    server = _ReplacingServer()
+    server.refuse_pods = True
+    with pytest.raises(DispatchError, match="cannot inspect Pods"):
+        _dispatcher(_ApiServer(), client=server.client).launch("run-1")
+    assert server.created == 0 and server.deleted == []
+
+
+def test_two_simultaneous_resumers_launch_exactly_one_runner() -> None:
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier, Lock
+
+    barrier, lock = Barrier(2), Lock()
+
+    class ConcurrentServer(_ReplacingServer):
+        def __call__(self, request: httpx.Request) -> httpx.Response:
+            if request.method == "DELETE":
+                barrier.wait(timeout=5)
+            with lock:
+                if request.method == "DELETE":
+                    if self.job is None:
+                        return httpx.Response(HTTPStatus.NOT_FOUND)
+                    wanted = json.loads(request.content)["preconditions"]["uid"]
+                    if self.job["metadata"]["uid"] != wanted:
+                        return httpx.Response(HTTPStatus.CONFLICT)
+                return super().__call__(request)
+
+    server = ConcurrentServer()
+
+    def resume() -> str:
+        try:
+            return _dispatcher(_ApiServer(), client=server.client).launch("run-1").identifier
+        except AlreadyRunning:
+            return "already-running"
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(pool.map(lambda _: resume(), range(2)))
+    assert sorted(results) == ["already-running", "new"]
+    assert server.created == 1
+    assert len(server.deleted) == 1

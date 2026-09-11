@@ -17,6 +17,7 @@ immutable: once accepted they are not rewritten in place; they are superseded by
 | [008](008-helm-charts-sops-and-vllm-for-the-appliance.md) | Helm charts with SOPS secrets and vLLM served models for the appliance | ✅ Accepted | deploy, dispatch, settings |
 | [009](009-durable-call-reservations-and-atomic-recovery.md) | Durable call reservations and atomic stage recovery | ✅ Accepted | engine, store, runner |
 | [010](010-reserve-bundle-identity-and-pin-priors.md) | Reserve bundle identity and pin realism priors | ✅ Accepted | catalogue, store, contracts, api |
+| [011](011-resume-frozen-runs-and-replace-terminal-jobs.md) | Resume frozen runs and replace terminal Jobs | ✅ Accepted | api, dispatch, deploy |
 
 **Status legend:** ✅ Accepted · 📝 Proposed · 🚫 Deprecated · ↩️ Superseded by ADR-NNN
 

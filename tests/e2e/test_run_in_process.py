@@ -221,8 +221,8 @@ def test_the_same_request_again_is_accepted_and_runs_nothing_twice(
     again = client.post("/runs", json=_spec())
 
     assert again.status_code == 202
-    assert len(runs.outcomes) == 2, "the runner was launched again"
-    assert runs.outcomes[1].resumed == runs.outcomes[1].n_traces == 12, "and found the run closed"
+    assert len(runs.outcomes) == 1, "a completed run needs no replacement runner"
+    assert again.json()["launched"] is False
     assert client.get(f"/runs/{RUN}/result").json() == first
     assert len(runs._receiver.received) == 1, "the consumer was told once"
 

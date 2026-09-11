@@ -108,3 +108,11 @@ A declared `realism_prior` is resolved at acceptance together with `realism_prio
 resolved identity. Execution verifies the stored bytes and reads only that version. A prior missing
 from the store or with a conflicting digest is rejected rather than silently skipped. A legacy run
 that needs an unpinned prior must use a new run id. Completed runs remain readable.
+
+## Existing request retries
+
+`POST /runs` first reads an existing frozen specification. Equivalent requests keep its catalogue
+and prior pins, even if current publications no longer accept that selection. Explicitly conflicting
+pins and other material changes return 409. New runs still pass the full gate; concurrent creation
+compares against whichever specification wins the conditional write. Repeating a completed run's
+request does not launch another runner; the explicit resume route keeps its existing 409 response.
