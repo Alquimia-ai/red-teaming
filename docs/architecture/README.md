@@ -29,5 +29,13 @@ flowchart LR
     C -->|GET /runs/id| A
 ```
 
-Detailed documents for the API, the runner, the store layout, the knowledge base and the
-catalogue are written as each component lands.
+## Where to read on
+
+| Document | Question |
+|---|---|
+| [`run.md`](run.md) | What happens to a run, from the gate to the manifest, and how its phase is derived |
+| [`store.md`](store.md) | Where every artifact lives, why identities derive from content, how resumption is a set difference |
+| [`catalogue.md`](catalogue.md) | What a catalogue bundle declares: plugins, strategies, constructions, grounding, delivery, the contract |
+| [`packages.md`](packages.md) | What each package owns and what it may import |
+| [`../components/`](../components/) | How each app works: the API's routes, the runner's pipeline, the command line |
+| [`../deploy/`](../deploy/) | Where it runs: the local stack, a cluster, the appliance, a cloud, the models |
