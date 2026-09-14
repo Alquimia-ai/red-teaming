@@ -29,10 +29,9 @@ jobs:
       matrix:
         runner: ${{ fromJSON(inputs.runners) }}
     runs-on: ${{ matrix.runner }}
-    permissions:
-      # Writing is what attaching to a release needs; a caller that only verifies grants read, and
-      # a called workflow can only ever hold what its caller granted.
-      contents: write
+    # No permissions of its own: a called workflow may not ask for more than its caller was
+    # granted, and asking for what only the release needs would refuse to start for the two
+    # callers that publish nothing. The caller decides -- read to verify, write to attach.
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5

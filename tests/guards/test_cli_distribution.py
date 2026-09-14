@@ -189,6 +189,18 @@ def test_only_a_release_publishes_the_command_line() -> None:
             assert "cli--tag_name" in str(tag), f"{name} publishes to {tag}, not the cli's own tag"
 
 
+def test_the_right_to_publish_comes_from_the_caller() -> None:
+    """A called workflow cannot ask for more than its caller holds, so the build asks for nothing:
+    the callers that only verify grant read, and the release grants the write it needs."""
+    assert "permissions:" not in BUILD.read_text(), (
+        "build-cli.yml declares permissions; a caller that grants less refuses to start the run"
+    )
+    for name, job in _callers().items():
+        granted = (job.get("permissions") or {}).get("contents")
+        wanted = "write" if name.startswith("release-please.yml") else "read"
+        assert granted == wanted, f"{name} grants contents: {granted}, it needs {wanted}"
+
+
 def test_develop_builds_the_whole_matrix_and_a_pull_request_one_platform() -> None:
     develop = _workflow("cli-develop.yml")
     assert _triggers(develop)["push"]["branches"] == ["develop"]
