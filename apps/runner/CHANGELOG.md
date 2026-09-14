@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.1](https://github.com/Alquimia-ai/red-teaming/compare/runner-v0.1.0...runner-v0.1.1) (2026-09-14)
+
+
+### Code Refactoring
+
+* **engine:** make work identity and collaborator contracts explicit ([5ea14af](https://github.com/Alquimia-ai/red-teaming/commit/5ea14af78b8c86dc00299d70c567b0a9e863bf05))
+* **repo:** use runtime type imports and concise documentation ([1116334](https://github.com/Alquimia-ai/red-teaming/commit/1116334c493ea55da7fec7a45a57c285b6f613ed))
+
 ## 0.1.0 (2026-09-11)
 
 
