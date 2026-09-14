@@ -299,7 +299,9 @@ def test_a_relaunch_replays_what_closed_and_asks_the_assistant_only_the_rest(
         attacker="crescendo",
         ended="attacker",
     )
-    Recorder(store, RUN, [escalate], {p["id"]: p for p in PROBES})(OPENING, earlier.final, earlier)
+    Recorder(store, RUN, {p["id"]: p for p in PROBES}).record(
+        escalate, OPENING, earlier.final, earlier
+    )
 
     attacked, assistant, attacker = _attack(store, plan=plan)
 

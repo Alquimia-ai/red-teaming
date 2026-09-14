@@ -9,7 +9,7 @@ from gaussia.schemas.roastme import TargetResponse
 from redteam_contracts.failure import RATE_LIMITED, SERVER_ERROR, TransportFailure
 from redteam_contracts.plan import Plan, PlannedProbe, expand
 from redteam_engine.planned import STATIC_TECHNIQUE
-from redteam_engine.recording import EXPLOIT, Recorder
+from redteam_engine.recording import Recorder
 from redteam_engine.resume import live_units, recorded_responses
 from redteam_store import layout
 from redteam_store.codec import decode_trace
@@ -50,10 +50,10 @@ def test_the_kth_exchange_lands_under_the_kth_pending_unit() -> None:
     question, which a catalogue is free to do."""
     store = MemoryObjectStore()
     plan = _plan()
-    recorder = Recorder(store, RUN, plan.units, PROBES)
+    recorder = Recorder(store, RUN, PROBES)
 
     for unit in plan.units:
-        recorder(PROBES[unit.probe_id]["query"], TargetResponse(content="ok"))
+        recorder.record(unit, PROBES[unit.probe_id]["query"], TargetResponse(content="ok"))
 
     for unit in plan.units:
         key = layout.trace(RUN, unit.attack_id, unit.replica_idx)
@@ -78,7 +78,7 @@ def test_a_conducted_conversation_is_one_trace_carrying_every_turn() -> None:
 
     store = MemoryObjectStore()
     plan = _plan(replicas=1)
-    recorder = Recorder(store, RUN, plan.units, PROBES)
+    recorder = Recorder(store, RUN, PROBES)
     unit = plan.units[0]
     conversation = Conversation(
         pairs=(
@@ -92,7 +92,7 @@ def test_a_conducted_conversation_is_one_trace_carrying_every_turn() -> None:
         ended=ENDED_BY_ATTACKER,
     )
 
-    recorder("one?", conversation.final, conversation)
+    recorder.record(plan.units[0], "one?", conversation.final, conversation)
 
     trace = decode_trace(store.get(layout.trace(RUN, unit.attack_id, unit.replica_idx)))
     assert [(t.idx, t.role.value, t.content) for t in trace.turns] == [
@@ -118,7 +118,7 @@ def test_a_conversation_whose_last_turn_failed_marks_the_unit_and_writes_nothing
 
     store = MemoryObjectStore()
     plan = _plan(replicas=1)
-    recorder = Recorder(store, RUN, plan.units, PROBES)
+    recorder = Recorder(store, RUN, PROBES)
     unit = plan.units[0]
     failed = failed_response(TransportFailure(kind=SERVER_ERROR, message="500", error_type="500"))
     conversation = Conversation(
@@ -128,7 +128,7 @@ def test_a_conversation_whose_last_turn_failed_marks_the_unit_and_writes_nothing
         ended=ENDED_BY_TARGET_FAILURE,
     )
 
-    recorder("one?", failed, conversation)
+    recorder.record(plan.units[0], "one?", failed, conversation)
 
     assert not store.exists(layout.trace(RUN, unit.attack_id, unit.replica_idx))
     assert store.exists(layout.trace_failure(RUN, unit.attack_id, unit.replica_idx))
@@ -141,10 +141,10 @@ def test_only_the_pending_units_are_handed_over_and_the_indices_still_match() ->
     store = MemoryObjectStore()
     plan = _plan(replicas=2)
     pending = [u for u in plan.units if u.replica_idx == 1]
-    recorder = Recorder(store, RUN, pending, PROBES)
+    recorder = Recorder(store, RUN, PROBES)
 
     for unit in pending:
-        recorder(PROBES[unit.probe_id]["query"], TargetResponse(content="ok"))
+        recorder.record(unit, PROBES[unit.probe_id]["query"], TargetResponse(content="ok"))
 
     for unit in pending:
         assert store.exists(layout.trace(RUN, unit.attack_id, 1))
@@ -155,8 +155,8 @@ def test_an_already_closed_key_is_left_alone() -> None:
     """Another attempt closed it first. The store is the record, and the record says done."""
     store = MemoryObjectStore()
     plan = _plan(replicas=1)
-    Recorder(store, RUN, plan.units, PROBES)("one?", TargetResponse(content="first"))
-    Recorder(store, RUN, plan.units, PROBES)("one?", TargetResponse(content="second"))
+    Recorder(store, RUN, PROBES).record(plan.units[0], "one?", TargetResponse(content="first"))
+    Recorder(store, RUN, PROBES).record(plan.units[0], "one?", TargetResponse(content="second"))
 
     unit = plan.units[0]
     assert decode_trace(store.get(layout.trace(RUN, unit.attack_id, 0))).turns[1].content == "first"
@@ -166,8 +166,7 @@ def test_the_search_s_own_conversations_are_evidence_beyond_the_plan() -> None:
     """Keyed by content, aimed at no plugin: evidence, never coverage. Exactly the distinction the
     coverage report exists to draw."""
     store = MemoryObjectStore()
-    recorder = Recorder(store, RUN, [], PROBES)
-    recorder.phase = EXPLOIT
+    recorder = Recorder(store, RUN, PROBES)
     recorder("a generated question?", TargetResponse(content="an answer"))
 
     [key] = store.list_prefix(layout.traces_prefix(RUN) + "/")
@@ -185,11 +184,11 @@ def test_a_failed_exchange_marks_the_unit_failed_and_leaves_it_for_the_next_atte
     evidence and reopens the unit."""
     store = MemoryObjectStore()
     plan = _plan(replicas=1)
-    recorder = Recorder(store, RUN, plan.units, PROBES)
+    recorder = Recorder(store, RUN, PROBES)
     failure = TransportFailure(kind=RATE_LIMITED, message="slow down", error_type="X", status=429)
 
-    recorder("one?", failed_response(failure))
-    recorder("two?", TargetResponse(content="fine"))
+    recorder.record(plan.units[0], "one?", failed_response(failure))
+    recorder.record(plan.units[1], "two?", TargetResponse(content="fine"))
 
     first, second = plan.units
     assert not store.exists(layout.trace(RUN, first.attack_id, 0))
@@ -208,9 +207,11 @@ def test_a_marker_from_an_earlier_attempt_is_left_alone() -> None:
     plan = _plan(replicas=1)
     unit = plan.units[0]
     store.put(layout.trace_failure(RUN, unit.attack_id, 0), b"an earlier attempt's record")
-    recorder = Recorder(store, RUN, plan.units, PROBES)
+    recorder = Recorder(store, RUN, PROBES)
 
-    recorder("one?", TargetResponse(content="", failed=True, failure_reason="again"))
+    recorder.record(
+        plan.units[0], "one?", TargetResponse(content="", failed=True, failure_reason="again")
+    )
 
     assert store.get(layout.trace_failure(RUN, unit.attack_id, 0)) == b"an earlier attempt's record"
     assert recorder.failed == 0
@@ -220,8 +221,7 @@ def test_a_failed_conversation_beyond_the_plan_is_a_trace_carrying_the_record() 
     """The search's own conversation has no unit to reopen, so the evidence is written as a trace
     and the turn carries what went wrong."""
     store = MemoryObjectStore()
-    recorder = Recorder(store, RUN, [], PROBES)
-    recorder.phase = EXPLOIT
+    recorder = Recorder(store, RUN, PROBES)
     failure = TransportFailure(kind=SERVER_ERROR, message="oops", error_type="X", status=500)
 
     recorder("a generated question?", failed_response(failure))

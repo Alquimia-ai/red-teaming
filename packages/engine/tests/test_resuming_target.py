@@ -8,7 +8,7 @@ from gaussia.schemas.roastme import TargetResponse
 
 from redteam_contracts.plan import Plan, PlannedProbe, expand
 from redteam_engine.recording import Recorder
-from redteam_engine.resume import ResumingTarget, live_units, recorded_responses
+from redteam_engine.resume import live_units, recorded_responses
 from redteam_store import layout
 from redteam_store.memory import MemoryObjectStore
 from redteam_store.resume import difference
@@ -39,28 +39,6 @@ def _plan() -> Plan:
     )
 
 
-def test_closed_units_are_answered_from_the_store_and_pending_ones_by_the_assistant() -> None:
-    """The assistant is never asked a closed unit's question again; the judge is."""
-    store = MemoryObjectStore()
-    units = list(_plan().units)
-    closed, pending = units[:1], units[1:]
-    Recorder(store, RUN, closed, PROBES)(
-        PROBES[closed[0].probe_id]["query"], TargetResponse(content="what the assistant said")
-    )
-    live = _Live()
-
-    target = ResumingTarget(units, recorded_responses(store, RUN, closed), live)
-    first = target.send(PROBES[closed[0].probe_id]["query"])
-    second = target.send(PROBES[pending[0].probe_id]["query"])
-    beyond = target.send("a question the search generated?")
-
-    assert first.content == "what the assistant said"
-    assert second.content.startswith("live answer")
-    assert beyond.content.startswith("live answer"), "past the plan is the search's, and goes live"
-    assert live.calls == [PROBES[pending[0].probe_id]["query"], "a question the search generated?"]
-    assert target.replayed == 1
-
-
 def test_a_conducted_trace_replays_its_last_answer_which_is_the_one_gaussia_graded() -> None:
     """Replaying the first would grade a resumed run on the opening the attacker was told not to
     press on."""
@@ -77,7 +55,7 @@ def test_a_conducted_trace_replays_its_last_answer_which_is_the_one_gaussia_grad
         technique=MANY_TURNS,
         attacker="crescendo",
     )
-    Recorder(store, RUN, closed, PROBES)("one?", conversation.final, conversation)
+    Recorder(store, RUN, PROBES).record(closed[0], "one?", conversation.final, conversation)
 
     recorded = recorded_responses(store, RUN, closed)
 
@@ -91,8 +69,8 @@ def test_a_failed_exchange_is_not_closed_and_goes_live_again() -> None:
     target asks the assistant again."""
     store = MemoryObjectStore()
     units = list(_plan().units)
-    Recorder(store, RUN, units[:1], PROBES)(
-        "one?", TargetResponse(content="", failed=True, failure_reason="503")
+    Recorder(store, RUN, PROBES).record(
+        units[0], "one?", TargetResponse(content="", failed=True, failure_reason="503")
     )
 
     diff = difference(store, Plan(run_id=RUN, units=tuple(units)))
@@ -129,15 +107,6 @@ def test_a_trace_holding_a_failed_turn_still_replays_as_failed() -> None:
     assert replayed.failure_reason == "503"
 
 
-def test_nothing_closed_means_everything_goes_live() -> None:
-    live = _Live()
-    target = ResumingTarget(list(_plan().units), {}, live)
-    target.send("one?")
-    target.send("two?")
-    assert live.calls == ["one?", "two?"]
-    assert target.replayed == 0
-
-
 def test_what_goes_live_includes_units_marked_failed_not_only_pending_ones() -> None:
     """A unit with a `.failed` marker has no recorded answer, so the resuming target sends it live.
     The recorder is built over this list so its positional cursor counts that unit; built over the
@@ -145,8 +114,8 @@ def test_what_goes_live_includes_units_marked_failed_not_only_pending_ones() -> 
     store = MemoryObjectStore()
     plan = expand(RUN, [PlannedProbe(probe_id=p) for p in ("p1", "p2", "p3")], {"c": "u"}, 1)
     closed, marked, pending = plan.units
-    Recorder(store, RUN, [closed], PROBES)(
-        PROBES[closed.probe_id]["query"], TargetResponse(content="closed")
+    Recorder(store, RUN, PROBES).record(
+        closed, PROBES[closed.probe_id]["query"], TargetResponse(content="closed")
     )
     store.put(layout.trace_failure(RUN, marked.attack_id, marked.replica_idx), b"")
     diff = difference(store, plan)

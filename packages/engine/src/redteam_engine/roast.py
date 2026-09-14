@@ -19,8 +19,7 @@ for being the procedure the paper evaluated.
 
 from __future__ import annotations
 
-from typing import Any
-
+from gaussia.core.embedder import Embedder
 from gaussia.core.grader import Grader
 from gaussia.core.target_assistant import TargetAssistant
 from gaussia.generators.roastme.exploiter import Exploiter
@@ -30,6 +29,7 @@ from gaussia.generators.roastme.searches.on_profile import JudgeOnProfileFilter
 from gaussia.generators.roastme.searches.query_generation import PromptedQueryGenerator
 from gaussia.generators.roastme.searches.realism import EmbeddingRealismEstimator
 from gaussia.schemas.roastme import BehavioralContract, ExploiterConfig
+from langchain_core.language_models.chat_models import BaseChatModel
 
 MAX_ATTRIBUTES = 3
 QUERY_ATTEMPTS = 3
@@ -48,8 +48,8 @@ def build_exploiter(
     contract: BehavioralContract,
     target: TargetAssistant,
     *,
-    generator: Any,
-    embedder: Any,
+    generator: BaseChatModel,
+    embedder: Embedder,
     realism_prior: list[str],
     config: ExploiterConfig,
     max_attributes: int = MAX_ATTRIBUTES,

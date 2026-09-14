@@ -10,7 +10,14 @@ import pytest
 from gaussia.schemas.roastme import GradedOutcome, KnowledgeHook, PrincipleGrade, Probe
 
 from redteam_contracts.plan import PlannedProbe, WorkUnit, expand
-from redteam_engine.dataset import EXPLOIT_SESSION, RoastDataset, as_roast, roast_dataset
+from redteam_engine.dataset import (
+    EXPLOIT_SESSION,
+    RoastDataset,
+    RoastSessions,
+    as_roast,
+    roast_dataset,
+)
+from redteam_engine.outcomes import UnitOutcome
 
 COMMON = {"run_id": "run", "assistant_id": "asst-1", "context": "banca", "language": "es-419"}
 
@@ -20,6 +27,16 @@ class _Result:
     outcomes: list[GradedOutcome]
     probes: list[Probe] = field(default_factory=list)
     n_ungraded: int = 0
+
+
+def _dataset(
+    units: list[WorkUnit], probes: list[Probe], result: _Result, report: object, **kwargs: str
+) -> RoastSessions:
+    return roast_dataset(
+        [UnitOutcome(u, p, o) for u, p, o in zip(units, probes, result.outcomes, strict=True)],
+        report,
+        **kwargs,
+    )
 
 
 def _probe(pid: str, strategy: str, entity: str, *, doc: int) -> Probe:
@@ -76,7 +93,7 @@ def test_each_replica_carries_its_own_outcome() -> None:
         for unit in units
     ]
 
-    roast = roast_dataset(units, handed, _Result(outcomes, handed), None, **COMMON)
+    roast = _dataset(units, handed, _Result(outcomes, handed), None, **COMMON)
 
     answers = {d.session_id: d.conversation[0].assistant for d in roast.sessions}
     assert answers == {
@@ -91,7 +108,7 @@ def test_a_misaligned_outcome_list_is_refused_rather_than_mispaired() -> None:
     units = _units([plain], replicas=2)
     handed = _handed([plain], units)
     with pytest.raises(ValueError):
-        roast_dataset(units, handed, _Result([_outcome(plain, 0.0)], handed), None, **COMMON)
+        _dataset(units, handed, _Result([_outcome(plain, 0.0)], handed), None, **COMMON)
 
 
 def test_every_turn_keeps_gaussia_s_record_and_id() -> None:
@@ -101,7 +118,7 @@ def test_every_turn_keeps_gaussia_s_record_and_id() -> None:
     handed = _handed([fake, control], units)
     outcomes = [_outcome(p, 1.0 if p.id == "f" else 0.0) for p in handed]
 
-    roast = roast_dataset(units, handed, _Result(outcomes, handed), None, **COMMON)
+    roast = _dataset(units, handed, _Result(outcomes, handed), None, **COMMON)
 
     [session] = roast.sessions
     by_id = {turn.qa_id: turn for turn in session.conversation}
@@ -121,7 +138,7 @@ def test_the_record_survives_the_round_trip_through_json() -> None:
     it."""
     plain = _probe("x", "ask-plain", "Plan Uno", doc=1)
     units = _units([plain], replicas=1)
-    roast = roast_dataset(units, [plain], _Result([_outcome(plain, 0.5)], [plain]), None, **COMMON)
+    roast = _dataset(units, [plain], _Result([_outcome(plain, 0.5)], [plain]), None, **COMMON)
 
     [session] = roast.sessions
     reloaded = RoastDataset.model_validate(json.loads(session.model_dump_json()))
@@ -169,9 +186,7 @@ def test_the_search_s_session_is_appended_when_the_search_found_something() -> N
         categories=[evaluation], queries_over_threshold=[record], components={"search": "x"}
     )
 
-    roast = roast_dataset(
-        units, [plain], _Result([_outcome(plain, 0.0)], [plain]), report, **COMMON
-    )
+    roast = _dataset(units, [plain], _Result([_outcome(plain, 0.0)], [plain]), report, **COMMON)
 
     assert [d.session_id for d in roast.sessions] == ["run:r0", f"run:{EXPLOIT_SESSION}"]
     search = roast.sessions[-1]
@@ -179,7 +194,7 @@ def test_the_search_s_session_is_appended_when_the_search_found_something() -> N
     assert search.conversation[0].roast.evidence_available is False
 
     empty = report.model_copy(update={"queries_over_threshold": []})
-    roast = roast_dataset(units, [plain], _Result([_outcome(plain, 0.0)], [plain]), empty, **COMMON)
+    roast = _dataset(units, [plain], _Result([_outcome(plain, 0.0)], [plain]), empty, **COMMON)
     assert [d.session_id for d in roast.sessions] == ["run:r0"], "nothing over tau, no session"
 
 

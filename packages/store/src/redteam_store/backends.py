@@ -17,7 +17,7 @@ same reason.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Protocol
 
 from redteam_store.interface import ObjectStore
 
@@ -36,7 +36,22 @@ class StoreBackendUnavailable(RuntimeError):
     """
 
 
-def build_store(backend: str, settings: Any, *, verify: bool = True) -> ObjectStore:
+class S3Settings(Protocol):
+    """The connection values required by the S3 adapter."""
+
+    @property
+    def s3_bucket(self) -> str: ...
+    @property
+    def s3_endpoint(self) -> str | None: ...
+    @property
+    def s3_access_key(self) -> str | None: ...
+    @property
+    def s3_secret_key(self) -> str | None: ...
+    @property
+    def s3_region(self) -> str | None: ...
+
+
+def build_store(backend: str, settings: S3Settings, *, verify: bool = True) -> ObjectStore:
     """The store this deployment asked for, checked before it is used.
 
     Args:
@@ -63,7 +78,7 @@ def build_store(backend: str, settings: Any, *, verify: bool = True) -> ObjectSt
             endpoint_url=settings.s3_endpoint,
             access_key=settings.s3_access_key,
             secret_key=settings.s3_secret_key,
-            region=getattr(settings, "s3_region", None),
+            region=settings.s3_region,
         )
         if verify:
             # Before the first key is written: "this key exists" and "this unit closed" are one

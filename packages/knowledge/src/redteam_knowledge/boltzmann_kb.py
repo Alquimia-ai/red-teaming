@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Any
 
 from redteam_contracts.kb import Entity, KnowledgeRef, Passage
+from redteam_knowledge.registry import RegistryClient
 
 READER_NAMESPACE = "alquimia"
 READER_NAME = "red-teaming-runner"
@@ -246,7 +247,7 @@ class BoltzmannKnowledgeBase:
 @asynccontextmanager
 async def pulled_brain(
     ref: KnowledgeRef,
-    registry: Any,
+    registry: RegistryClient,
     *,
     modules: list[Any] | None = None,
     ignore_vector_indices: bool = True,

@@ -15,9 +15,11 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
-from typing import Any
+
+from langchain_core.language_models.chat_models import BaseChatModel
 
 from redteam_contracts.kb import KnowledgeBase
+from redteam_knowledge.registry import RegistryClient
 from redteam_probes.generation import generate_all, no_base
 from redteam_probes.request import GenerationReport, GenerationRequest
 from redteam_store import layout
@@ -50,8 +52,8 @@ def generate_for(
     store: ObjectStore,
     request: GenerationRequest,
     *,
-    model: Any | None = None,
-    registry: Any | None = None,
+    model: BaseChatModel | None = None,
+    registry: RegistryClient | None = None,
     knowledge_base: KnowledgeBase | None = None,
 ) -> GenerationReport:
     """The run's probe set: read back when it is already pinned, generated and written otherwise.
@@ -73,8 +75,8 @@ def generate_for(
 async def _generate(
     store: ObjectStore,
     request: GenerationRequest,
-    model: Any | None,
-    registry: Any | None,
+    model: BaseChatModel | None,
+    registry: RegistryClient | None,
     knowledge_base: KnowledgeBase | None,
 ) -> GenerationReport:
     """Generate, write the blob and the run's pointer, and return the report.

@@ -20,12 +20,14 @@ the recorder as each exchange closed, which is why nothing here has to carry it 
 
 from __future__ import annotations
 
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from typing import Any
+from typing import Protocol
 
-from gaussia.schemas.roastme import Probe
+from gaussia.schemas.roastme import AssistantProfile, FailureReport, Probe, ProfilerResult
 
 from redteam_engine.checkpoints import RecoveryIncomplete
+from redteam_engine.dataset import RoastDataset
 from redteam_engine.errors import TargetFailure
 from redteam_engine.governed import BudgetExhausted
 from redteam_engine.ledger import FailureLedger
@@ -63,7 +65,7 @@ class Conducted:
     n_generated_traces: int
     """Conversations written beyond the plan -- the search's own. Evidence, never coverage."""
 
-    datasets: tuple[Any, ...] = ()
+    datasets: tuple[RoastDataset, ...] = ()
     """The attack dataset, one session per replica. Built inside conduction from the Profiler's
     result and the Exploiter's report, because those two are what it is made of."""
 
@@ -74,7 +76,7 @@ class Conducted:
     """Where the exploitation report was written, when the search ran."""
 
 
-def _why_ungraded(result: Any) -> str:
+def _why_ungraded(result: ProfilerResult) -> str:
     """The distinct reasons exchanges went ungraded, most common first.
 
     gaussia records one per exchange and separates the two cases that matter -- "the target
@@ -90,7 +92,7 @@ def _why_ungraded(result: Any) -> str:
 
     reasons = Counter(
         str(outcome.ungraded_reason or "no reason recorded")
-        for outcome in getattr(result, "outcomes", ())
+        for outcome in result.outcomes
         if outcome.violation is None
     )
     if not reasons:
@@ -98,17 +100,43 @@ def _why_ungraded(result: Any) -> str:
     return "; ".join(f"{count}x {reason[:160]}" for reason, count in reasons.most_common(3))
 
 
+class Profiler(Protocol):
+    def profile(self, probes: Sequence[Probe]) -> ProfilerResult: ...
+
+
+class Exploitation(Protocol):
+    def exploit(self, profile: AssistantProfile) -> FailureReport: ...
+
+
+class RecordingStats(Protocol):
+    @property
+    def written(self) -> int: ...
+    @property
+    def beyond_plan(self) -> int: ...
+
+
+class Artifacts(Protocol):
+    def profile(self, result: ProfilerResult) -> str: ...
+    def start_exploit(self) -> None: ...
+    def exploit(self, report: FailureReport) -> str: ...
+
+
+DatasetBuilder = Callable[
+    [ProfilerResult, FailureReport | None, dict[str, str] | None], Sequence[RoastDataset]
+]
+
+
 def conduct(
-    profiler: Any,
+    profiler: Profiler,
     probes: list[Probe],
-    recorder: Any,
+    recorder: RecordingStats,
     *,
-    exploiter: Any = None,
-    build_dataset: Any = None,
+    exploiter: Exploitation | None = None,
+    build_dataset: DatasetBuilder | None = None,
     components: dict[str, str],
     ungraded_alarm_ratio: float = UNGRADED_ALARM_RATIO,
     ledger: FailureLedger | None = None,
-    artifacts: Any = None,
+    artifacts: Artifacts | None = None,
 ) -> Conducted:
     """Run the profiler, check the profile is worth building on, run the exploiter if there is one.
 
@@ -123,8 +151,7 @@ def conduct(
         probes: One per unit of the **whole** plan, in plan order. The target behind the profiler
             answers the closed ones from their traces and sends the pending ones live, so the
             profile and the thin-profile ratio describe the run and not this attempt's tail.
-        recorder: The `on_exchange` hook already installed on the target. Its phase is switched
-            here, because only conduction knows which stage is sending.
+        recorder: Counts of the planned and generated traces persisted during conduction.
         exploiter: gaussia's, or `None` when the run declared no generator to search with. Absent
             is recorded rather than silently skipped: a manifest that does not say the search never
             ran reads exactly like one for a run whose search found nothing.
@@ -138,9 +165,6 @@ def conduct(
         artifacts: Where the profile and the report are kept -- `ControlArtifacts` over the run's
             store. `None` keeps neither, which is only sensible in a test.
     """
-    from redteam_engine.recording import EXPLOIT, PROFILE
-
-    recorder.phase = PROFILE
     result = profiler.profile(probes)
 
     total = max(len(probes), 1)
@@ -182,7 +206,6 @@ def conduct(
         # attempt that already searched -- and its reason is more specific than this default.
         recorded.setdefault("exploit", "skipped: no generator model declared")
     else:
-        recorder.phase = EXPLOIT
         if artifacts is not None:
             artifacts.start_exploit()
         try:

@@ -22,7 +22,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from gaussia.schemas.roastme import Probe
+from gaussia.schemas.roastme import FailureReport, Probe, ProfilerResult
 
 from redteam_catalogue.contract import build_contract
 from redteam_engine.artifacts import ControlArtifacts
@@ -30,6 +30,7 @@ from redteam_engine.attackers import AttackerUnbound, attackers_for
 from redteam_engine.call_journal import CallJournal
 from redteam_engine.conduct import conduct
 from redteam_engine.dataset import RoastDataset, roast_dataset
+from redteam_engine.execution import PlanProfiler, key_of
 from redteam_engine.exploit import exploiter_for
 from redteam_engine.governed import Budget, GovernedTarget, RateGate, SecretResolver, attackable
 from redteam_engine.ledger import FailureLedger
@@ -42,7 +43,6 @@ from redteam_engine.planned import (
 )
 from redteam_engine.recording import Recorder
 from redteam_engine.resume import (
-    ResumingTarget,
     closed_conduction,
     live_units,
     recorded_traces,
@@ -131,22 +131,13 @@ def attack(
     # here rather than after the first call to the assistant.
     budget.charge_time()
     ledger = FailureLedger()
-    # The recorder maps the k-th live exchange to the k-th unit the resuming target sends live, so
-    # it is built over exactly that list -- every unit with no recorded answer, in plan order --
-    # and not over `diff.pending`, which leaves out a unit marked failed-without-remedy that has
-    # no trace to replay and goes live as well.
+    # Failed markers do not close units: only completed traces can be replayed.
     replayed = recorded_traces(store, run_id, diff.closed)
     recorded = responses_of(replayed)
     live = live_units(plan.units, recorded)
-    recorder = Recorder(store, run_id, live, by_id)
+    recorder = Recorder(store, run_id, by_id)
 
-    # How each live unit is delivered, over the same list the recorder is built over: the door reads
-    # the k-th delivery for the k-th live exchange, the recorder writes the k-th conversation under
-    # the k-th live unit. The sidecar is read at the versions this run froze. The objectives are
-    # read for the plugins of conducted units only -- a static run reads none, and is never asked
-    # to reconcile two catalogues' words for a plugin nobody steers toward. The attackers are built
-    # for every id the *plan* names, not this attempt's live tail: an attacker that steered a
-    # conversation an earlier attempt closed took part in the run, and the manifest names it.
+    # Delivery metadata is keyed to live units; attacker provenance includes the whole plan.
     versions = spec.catalogue_versions
     deliveries = delivery_store.merged(store, versions)
     needed = conducted_plugins(live, by_id, deliveries)
@@ -174,7 +165,6 @@ def attack(
             on_exchange=recorder,
             max_retries=connector.max_retries,
             ledger=ledger,
-            planned=planned,
             attackers=built,
         )
     else:
@@ -184,7 +174,6 @@ def attack(
             budget=budget,
             on_exchange=recorder,
             ledger=ledger,
-            planned=planned,
             attackers=built,
         )
 
@@ -202,24 +191,28 @@ def attack(
     if not handed:
         return _attacked(store, run_id, {"conduct": "nothing to conduct: the plan is empty"})
 
-    # Closed units are replayed from their traces -- the assistant is not asked again, the judge
-    # grades the answer it already gave -- and pending ones go live, in plan order, which is the
-    # order the recorder maps them by. The exploiter searches through the governed door directly:
-    # its conversations are beyond the plan and there is nothing to replay.
-    resuming = ResumingTarget(units, recorded, governed)
-    profiler = build_profiler(contract, resuming)
+    # The adapter owns profiling order; replay bypasses the target budget and recorder.
+    profiler = PlanProfiler(
+        units,
+        {probe.id: probe for probe in handed},
+        recorded,
+        {key_of(unit): delivery for unit, delivery in zip(live, planned, strict=True)},
+        governed,
+        recorder,
+        lambda target: build_profiler(contract, target),
+    )
     exploiter, why_not = exploiter_for(spec, contract, governed, resolver, store)
 
     context = spec.context
     remembered: dict[str, str] = {}
 
-    def _build_dataset(result: Any, report: Any, searched: dict[str, str] | None) -> list[Any]:
+    def _build_dataset(
+        result: ProfilerResult, report: FailureReport | None, searched: dict[str, str] | None
+    ) -> list[RoastDataset]:
         if governed.fatal is not None:
             raise governed.fatal
         roast = roast_dataset(
-            units,
-            handed,
-            result,
+            profiler.outcomes,
             report,
             run_id=run_id,
             assistant_id=str(connector.options.get("assistant_id") or connector.endpoint),
@@ -268,7 +261,7 @@ def attack(
     components = {
         **conducted.components,
         **remembered,
-        "conduct_replayed": str(resuming.replayed),
+        "conduct_replayed": str(profiler.replayed),
         **delivery_provenance(
             (trace.labels for trace in replayed.values()),
             conducted=governed.conducted,

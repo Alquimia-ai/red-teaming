@@ -10,12 +10,14 @@ The judge model arrives already built. This module names no model and no provide
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from gaussia.core.grader import Grader
 from gaussia.graders.logprob import LogprobGrader
 from gaussia.schemas.roastme import GraderConfig
 from langchain_core.language_models.chat_models import BaseChatModel
+
+from redteam_contracts.run_spec import ModelSpec
 
 if TYPE_CHECKING:
     from redteam_contracts.serving import ServingPath
@@ -78,7 +80,7 @@ def build_grader(model: BaseChatModel, **kwargs: object) -> LogprobGrader:
     return LogprobGrader(model, verdict_config(**kwargs))  # type: ignore[arg-type]
 
 
-def grader_for(spec: Any, api_key: str | None) -> tuple[Grader, ServingPath, str | None]:
+def grader_for(spec: ModelSpec, api_key: str | None) -> tuple[Grader, ServingPath, str | None]:
     """The instrument a `ModelSpec` declares, and what provenance will say about it.
 
     One rule for every grader the run builds, so none can drift: a spec naming a provider builds

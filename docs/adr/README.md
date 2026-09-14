@@ -18,6 +18,7 @@ immutable: once accepted they are not rewritten in place; they are superseded by
 | [009](009-durable-call-reservations-and-atomic-recovery.md) | Durable call reservations and atomic stage recovery | ✅ Accepted | engine, store, runner |
 | [010](010-reserve-bundle-identity-and-pin-priors.md) | Reserve bundle identity and pin realism priors | ✅ Accepted | catalogue, store, contracts, api |
 | [011](011-resume-frozen-runs-and-replace-terminal-jobs.md) | Resume frozen runs and replace terminal Jobs | ✅ Accepted | api, dispatch, deploy |
+| [012](012-explicit-work-identity-and-collaborator-contracts.md) | Explicit work identity and collaborator contracts | ✅ Accepted | engine, typing, architecture |
 
 **Status legend:** ✅ Accepted · 📝 Proposed · 🚫 Deprecated · ↩️ Superseded by ADR-NNN
 
