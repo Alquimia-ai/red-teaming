@@ -25,6 +25,15 @@ class NoDocker(RuntimeError):
         super().__init__("docker is not on PATH; the local stack needs a docker daemon and compose")
 
 
+class ComposeFailed(RuntimeError):
+    """docker said no. What it said is already on the terminal, so this names the command and the
+    code and leaves the diagnosis where docker printed it -- a stack trace through subprocess adds
+    nothing a person can act on."""
+
+    def __init__(self, what: str, code: int) -> None:
+        super().__init__(f"`{what}` exited {code}; docker printed why above")
+
+
 def compose_file() -> Path:
     """The compose file to run: the checkout's when this runs from one, the packaged copy
     otherwise."""
@@ -58,7 +67,13 @@ def compose(workspace: Workspace, *args: str, env: Mapping[str, str] | None = No
         workspace.config.compose_project,
         *args,
     ]
-    subprocess.run(command, check=True, env={**os.environ, **environment(workspace), **(env or {})})
+    _run(command, env={**os.environ, **environment(workspace), **(env or {})})
+
+
+def _run(command: list[str], *, env: Mapping[str, str] | None = None) -> None:
+    done = subprocess.run(command, check=False, env=dict(env) if env is not None else None)
+    if done.returncode != 0:
+        raise ComposeFailed(" ".join(command[:3]), done.returncode)
 
 
 def up(workspace: Workspace, *, build: bool = False) -> None:
@@ -69,7 +84,7 @@ def up(workspace: Workspace, *, build: bool = False) -> None:
         root = repository_root()
         if root is None:
             raise FileNotFoundError("--build needs a checkout; this command line runs from a wheel")
-        subprocess.run(
+        _run(
             [
                 "docker",
                 "build",
@@ -78,8 +93,7 @@ def up(workspace: Workspace, *, build: bool = False) -> None:
                 "-f",
                 str(root / RUNNER_DOCKERFILE),
                 str(root),
-            ],
-            check=True,
+            ]
         )
         env["REDTEAM_RUNNER_IMAGE"] = LOCAL_RUNNER_IMAGE
         compose(workspace, "up", "-d", "--build", env=env)

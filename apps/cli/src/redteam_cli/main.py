@@ -97,7 +97,7 @@ def cmd_init(args: argparse.Namespace, ctx: Context) -> int:
 def _local(action: Callable[[], None]) -> int:
     try:
         action()
-    except (local.NoDocker, FileNotFoundError) as refused:
+    except (local.NoDocker, local.ComposeFailed, FileNotFoundError) as refused:
         raise Exit(UNREACHABLE, str(refused)) from refused
     return OK
 

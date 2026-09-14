@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import io
 import json
+import subprocess
 from collections.abc import Iterator, Sequence
 from pathlib import Path
 from typing import Any
@@ -317,6 +318,34 @@ def test_the_compose_file_ships_with_the_command_line() -> None:
     found = local.compose_file()
     assert found.name == "docker-compose.yml"
     assert local.repository_root() == ROOT
+
+
+def test_a_stack_that_will_not_come_up_is_a_message_and_an_exit_code(
+    cwd: Path, run: _Run, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """docker compose prints its own diagnosis -- an image it cannot pull, a port already bound.
+    The command line's job is to end there, with a code, not to raise through subprocess."""
+    monkeypatch.setattr("redteam_cli.local.shutil.which", lambda _: "/usr/bin/docker")
+    monkeypatch.setattr(
+        "redteam_cli.local.subprocess.run",
+        lambda *a, **k: subprocess.CompletedProcess(args=a[0] if a else [], returncode=1),
+    )
+    assert run("local", "up") == UNREACHABLE
+    assert "docker compose -f" in run.stderr and "exited 1" in run.stderr
+    assert "Traceback" not in run.stderr
+
+
+def test_the_stack_pulls_minio_from_where_minio_publishes() -> None:
+    """Docker Hub answers an anonymous pull of `minio/minio` with `pull access denied`, so a stack
+    that named it could not come up on a clean machine. The chart and the compose file agree."""
+    compose = (ROOT / "deploy/compose/docker-compose.yml").read_text()
+    values = (ROOT / "deploy/charts/red-teaming-stack/values.yaml").read_text()
+    for text, where in ((compose, "the compose file"), (values, "the chart's values")):
+        for line in text.splitlines():
+            named = line.split(":", 1)[1].strip() if ":" in line else ""
+            if named.startswith(("minio/minio", "minio/mc")):
+                raise AssertionError(f"{where} pulls {named} from Docker Hub, which denies it")
+        assert "quay.io/minio/minio" in text and "quay.io/minio/mc" in text, where
 
 
 def test_the_command_line_carries_no_click(cwd: Path) -> None:

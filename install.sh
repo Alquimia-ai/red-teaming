@@ -148,11 +148,15 @@ newest_tag() {
 
 asset_api_url() {
   # A private repository's assets are downloaded from the API, by id, not from the browser URL.
-  # Each asset is one object in the release's JSON: split on `{`, keep the one with this name.
+  # Each asset is one object in the release's JSON: flatten the whitespace first -- GitHub answers
+  # curl with pretty-printed JSON, where every field is already on its own line and splitting on
+  # `{` would leave the name and the url in different records -- then split and keep the object
+  # that carries this name.
   api "$GITHUB_API/repos/$OWNER/$REPOSITORY/releases/tags/$1" \
+    | tr -d ' \n' \
     | tr '{' '\n' \
-    | grep "\"name\"[[:space:]]*:[[:space:]]*\"$2\"" \
-    | sed -n 's|.*"url"[[:space:]]*:[[:space:]]*"\([^"]*releases/assets/[0-9]*\)".*|\1|p' \
+    | grep "\"name\":\"$2\"" \
+    | sed -n 's|.*"url":"\([^"]*/releases/assets/[0-9]*\)".*|\1|p' \
     | head -n 1
 }
 
