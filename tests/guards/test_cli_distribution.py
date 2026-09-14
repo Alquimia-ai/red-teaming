@@ -15,6 +15,7 @@ workflow -- publishing only when it is handed a release tag.
 
 from __future__ import annotations
 
+import json
 import subprocess
 import sys
 from pathlib import Path
@@ -113,6 +114,64 @@ def test_neither_invents_an_asset_for_a_platform_no_release_carries(
     assert _installer("--print-asset", system=system, machine=machine) == ""
     with pytest.raises(release.Unsupported):
         release.asset_name(system, machine)
+
+
+RELEASE_JSON = """{
+  "tag_name": "cli-v9.9.9",
+  "assets": [
+    {
+      "url": "https://api.github.com/repos/o/r/releases/assets/111",
+      "id": 111,
+      "name": "redteam-linux-aarch64.pyz",
+      "label": null,
+      "uploader": {"login": "somebody", "id": 1},
+      "browser_download_url": "https://github.com/o/r/releases/download/cli-v9.9.9/x.pyz"
+    },
+    {
+      "url": "https://api.github.com/repos/o/r/releases/assets/222",
+      "id": 222,
+      "name": "redteam-linux-x86_64.pyz",
+      "label": null,
+      "uploader": {"login": "somebody", "id": 1},
+      "browser_download_url": "https://github.com/o/r/releases/download/cli-v9.9.9/y.pyz"
+    }
+  ]
+}"""
+"""A release as the API returns it: the asset's own URL, its name, and a nested object between
+them. Written pretty, which is how GitHub answers curl."""
+
+
+def _shell_function(name: str) -> str:
+    """One function, as install.sh defines it, so a test runs the installer's real code."""
+    lines = INSTALLER.read_text().splitlines()
+    start = next(i for i, line in enumerate(lines) if line.startswith(f"{name}() {{"))
+    end = next(i for i in range(start + 1, len(lines)) if lines[i] == "}")
+    return "\n".join(lines[start : end + 1])
+
+
+@needs_sh
+@pytest.mark.parametrize("shape", ["pretty", "compact"])
+def test_the_installer_finds_an_asset_url_in_either_json_shape(tmp_path: Path, shape: str) -> None:
+    """A private repository is installed from the asset's API URL, which has to be read out of the
+    release JSON. GitHub serves that JSON pretty-printed to curl and compact to other clients; a
+    parser that only understood one of them resolved nothing and the install said the release
+    carried no asset for this platform.
+    """
+    payload = RELEASE_JSON if shape == "pretty" else json.dumps(json.loads(RELEASE_JSON))
+    fixture = tmp_path / "release.json"
+    fixture.write_text(payload)
+    script = "\n".join(
+        (
+            f'api() {{ cat "{fixture}"; }}',
+            "GITHUB_API=x; OWNER=o; REPOSITORY=r",
+            _shell_function("asset_api_url"),
+            "asset_api_url cli-v9.9.9 redteam-linux-aarch64.pyz",
+        )
+    )
+    done = subprocess.run(["sh", "-c", script], capture_output=True, text=True, check=False)
+    assert done.stdout.strip() == "https://api.github.com/repos/o/r/releases/assets/111", (
+        f"{shape} JSON: the installer resolved {done.stdout.strip()!r}"
+    )
 
 
 def test_the_installer_and_the_command_line_name_the_same_releases() -> None:
