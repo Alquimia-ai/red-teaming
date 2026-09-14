@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/Alquimia-ai/red-teaming/compare/cli-v0.2.0...cli-v0.2.1) (2026-09-14)
+
+
+### Bug Fixes
+
+* **cli:** bring the local stack up on a clean machine ([ae44084](https://github.com/Alquimia-ai/red-teaming/commit/ae440849a48639c4954c9f6ae1765178ed3c9d08))
+
 ## [0.2.0](https://github.com/Alquimia-ai/red-teaming/compare/cli-v0.1.0...cli-v0.2.0) (2026-09-14)
 
 
