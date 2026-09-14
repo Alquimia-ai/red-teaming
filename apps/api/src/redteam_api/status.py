@@ -1,16 +1,7 @@
-"""Run state, derived rather than stored.
+"""Derive progress from immutable run artifacts and liveness from the dispatcher.
 
-There is no table of runs with a status column somebody has to remember to update. The API lists the
-store and answers with what is actually there; then it asks the platform whether the process that
-should be writing there is still alive.
-
-Planned units come from the frozen spec and the pinned probe set; closed and failed ones from
-counting the keys under the run's prefix. Both numbers come from the same source that will produce
-the final result, **so they cannot disagree with it**. Liveness is the one thing the store cannot
-answer, and the platform is the only account of it: a run whose store says the attack is under way
-and whose platform says no such process exists is **stalled**, and the remedy is a relaunch that
-resumes from the difference.
-"""
+Coverage uses the same planned, closed and failed units as the final result. An unfinished run
+without a live runner is stalled and can be resumed."""
 
 from __future__ import annotations
 

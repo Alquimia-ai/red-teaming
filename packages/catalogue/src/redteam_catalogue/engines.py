@@ -26,24 +26,21 @@ no run has wired one yet. It joins once, for every kind, the moment one does.
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
+from gaussia.core.hook_verifier import HookVerifier
 from gaussia.core.probe_engine import ProbeEngine
+from gaussia.core.transform import Transform
 from gaussia.generators.roastme.probes.enumeration import EnumerationProbeEngine
 from gaussia.generators.roastme.probes.library import ProbeLibrary
+from gaussia.schemas.roastme import Catalogue
+from langchain_core.language_models.chat_models import BaseChatModel
 
 from redteam_catalogue.enumerator import BrainEntityEnumerator
 from redteam_catalogue.premises import Ingredients, build_transforms
 from redteam_catalogue.verifier import BrainHookVerifier
-
-if TYPE_CHECKING:
-    from gaussia.core.hook_verifier import HookVerifier
-    from gaussia.core.transform import Transform
-    from gaussia.schemas.roastme import Catalogue
-    from langchain_core.language_models.chat_models import BaseChatModel
-
-    from redteam_contracts.kb import KnowledgeBase
-    from redteam_contracts.run_spec import ProbeContext
+from redteam_contracts.kb import KnowledgeBase
+from redteam_contracts.run_spec import ProbeContext
 
 ENUMERATION = "enumeration"
 

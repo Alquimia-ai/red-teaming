@@ -1,30 +1,21 @@
-"""Conducting the attack of one run -- profile, then exploit -- writing each conversation as it
-closes.
+"""Compose one run's profiling, exploitation, recording and dataset recovery.
 
-The Profiler is handed **every** unit of the plan, in plan order. The closed ones are answered from
-their traces by `ResumingTarget` and cost the assistant nothing; the pending ones go through the
-governed door and are recorded as they close. So the profile, the thin-profile ratio and the attack
-dataset cover the whole run whether this is the first attempt or the fifth. A resumed run that
-profiled only its tail would describe a different run than its manifest claims, and its dataset
-would not be derivable from the store.
-
-Conduction that already closed is not repeated: its atomic recovery checkpoint restores both
-the dataset and required provenance before the manifest can close the run.
-
-This module names no concrete target adapter and a guard checks that it never does: the target is
-built by name inside `attackable`, behind the door, and an adapter reachable any other way is a
-budget and a safe-mode gate that can be skipped by accident.
-"""
+PlanProfiler replays completed units and sends remaining units through the governed target.
+A completed conduction checkpoint restores its dataset and provenance without another attack.
+Concrete target adapters are constructed only behind the governed entrypoint."""
 
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
+from gaussia.core.target_assistant import TargetAssistant
 from gaussia.schemas.roastme import FailureReport, Probe, ProfilerResult
 
 from redteam_catalogue.contract import build_contract
+from redteam_contracts.plan import Plan
+from redteam_contracts.run_spec import RunSpec
 from redteam_engine.artifacts import ControlArtifacts
 from redteam_engine.attackers import AttackerUnbound, attackers_for
 from redteam_engine.call_journal import CallJournal
@@ -57,14 +48,8 @@ from redteam_store import contract as contract_store
 from redteam_store import delivery as delivery_store
 from redteam_store import layout
 from redteam_store.interface import ObjectStore
+from redteam_store.resume import RunDifference
 from redteam_target.capabilities import CapabilityGate
-
-if TYPE_CHECKING:
-    from gaussia.core.target_assistant import TargetAssistant
-
-    from redteam_contracts.plan import Plan
-    from redteam_contracts.run_spec import RunSpec
-    from redteam_store.resume import RunDifference
 
 DEFAULT_CONTEXT = "the assistant under evaluation"
 DEFAULT_LANGUAGE = "english"

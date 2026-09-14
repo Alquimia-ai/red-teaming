@@ -1,17 +1,7 @@
-"""The control artifacts: the weakness profile and the exploitation report, kept in the store.
+"""Persist the weakness profile and exploitation report as immutable control artifacts.
 
-Both are the run's own instruments reporting on the run. The profile is how the control judge read
-the assistant in order to decide what to press on; the report is what the search found when it
-pressed. They are delivered because an operator wants to read them -- which principles broke most,
-which categories of interaction broke the assistant reproducibly -- and they are labelled control
-because their scores never enter the coverage. Coverage is planned, closed and failed, read off the
-store's keys; nothing here can move it.
-
-Each is written the moment it exists: the profile once profiling closes and passes the thin-profile
-check, before the search starts, so a process that dies during the search still leaves the profile
-it searched from; the report the moment the search returns. Append-only like everything else: a
-relaunch that profiles again over the same traces finds the key taken and leaves it.
-"""
+Save a usable profile before searching and the report when search returns. Their scores do not
+enter coverage, which is derived from planned, completed and failed work-unit keys."""
 
 from __future__ import annotations
 

@@ -27,9 +27,10 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from gaussia.core.transform import Transform
+from langchain_core.language_models.chat_models import BaseChatModel
 
 from redteam_catalogue.contextual import CONTEXTUAL_SIBLING, ContextualSiblingTransform
 from redteam_catalogue.transforms import (
@@ -40,11 +41,7 @@ from redteam_catalogue.transforms import (
     ShiftFigure,
     SwapAttestedToken,
 )
-
-if TYPE_CHECKING:
-    from langchain_core.language_models.chat_models import BaseChatModel
-
-    from redteam_contracts.run_spec import ProbeContext
+from redteam_contracts.run_spec import ProbeContext
 
 
 @dataclass(frozen=True)

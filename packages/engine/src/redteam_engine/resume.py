@@ -1,40 +1,23 @@
-"""Resuming a run: closed units are answered from the store, pending ones by the assistant.
+"""Read completed traces for replay and recover atomic conduction checkpoints.
 
-The plan's argument -- "the key exists" and "the unit completed" are the same statement -- says
-which units must not be executed again. It does not say what to do with them, and the naive answer
-is "nothing": the Profiler sees only the pending tail, so a resumed run profiles the tail, builds a
-dataset of the tail, under a manifest whose denominator counts the whole run. The traces hold the
-exchange but not the grade, because grading is gaussia's and happens inside `Profiler.profile`,
-which hands its outcomes back only at the end.
-
-So the whole plan is profiled on every attempt, and a closed unit is **replayed**: the answer the
-assistant already gave is returned to the Profiler as if it had just been given. gaussia is built
-for exactly this -- "replaying recorded responses is the same code as a live run rather than a
-separate mode" -- and the cost is honest: one judge call per replayed exchange and principle, and
-zero conversations with the assistant. The alternative, persisting each grade as it is produced,
-would reach into gaussia's private exchange and would still not cover a process that died inside
-`profile()`.
-"""
+Replay reuses the final agent response, including failure metadata. The profiler may regrade it,
+but no live target call is made. Dataset and exploit recovery retain their original provenance."""
 
 from __future__ import annotations
 
 import json
 from collections.abc import Iterable, Sequence
-from typing import TYPE_CHECKING
 
 from gaussia.schemas.roastme import TargetResponse
 
+from redteam_contracts.plan import WorkUnit
 from redteam_contracts.trace import Trace
 from redteam_engine.checkpoints import Checkpoint, RecoveryIncomplete, put_same, read, save
 from redteam_engine.dataset import EXPLOIT_SESSION, RoastDataset
 from redteam_store import layout
 from redteam_store.codec import decode_trace, encode_json
-from redteam_store.interface import ObjectNotFound
+from redteam_store.interface import ObjectNotFound, ObjectStore
 from redteam_target.failures import raw_failure
-
-if TYPE_CHECKING:
-    from redteam_contracts.plan import WorkUnit
-    from redteam_store.interface import ObjectStore
 
 Recorded = dict[tuple[str, int], TargetResponse]
 """`(attack_id, replica_idx)` -> the answer the assistant gave, for every closed unit."""

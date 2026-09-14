@@ -1,22 +1,7 @@
-"""Turning what a transport raised into a `TransportFailure`, and carrying it in a `TargetResponse`.
+"""Classify transport exceptions and preserve structured failures in TargetResponse.raw.
 
-An adapter catches everything and never raises -- gaussia's interface cannot express the
-obligation, so the package docstring does -- and what it caught must not be reported as a class
-name. This module is where the exception becomes a record: a **classifier registry**, where each
-classifier recognises one family of errors and says what kind of failure it is. A new transport
-registers a classifier beside its adapter; nothing here has to change.
-
-**No status is compared to a number anywhere.** The HTTP mapping is a table keyed by
-`http.HTTPStatus` *names* -- `TOO_MANY_REQUESTS`, not 429 -- and the two ranges are the standard
-library's own `is_client_error` and `is_server_error`. A guard
-(`tests/guards/test_no_status_literals.py`) keeps it that way, because a literal is exactly how a
-second, slightly different mapping grows in another file and the two disagree.
-
-The record travels inside `TargetResponse.raw`, which gaussia declares as `dict[str, Any]` for
-exactly this -- the transport's own account of the exchange -- so gaussia is not forked and the
-Profiler, which reads only `failed`, sees nothing new. `failed_response` and `failure_of` are the
-two functions that know where it hides.
-"""
+Adapters return failed responses rather than leaking transport exceptions. HTTP classification
+uses named HTTPStatus values; failure_of and failed_response own the raw-record representation."""
 
 from __future__ import annotations
 

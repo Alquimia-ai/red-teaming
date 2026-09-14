@@ -1,22 +1,15 @@
-"""The attackers a run binds, built by id from what the spec declared.
+"""Bind every attacker id in the plan to the model and credential reference in RunSpec.
 
-A catalogue names an attacker by id and never a model; the run binds the id to a model in
-`RunSpec.attackers`, with its own credential reference and its own line in the provenance. This is
-where the two meet: every id the plan's units are delivered through is built here, from the spec,
-through the same model builder and the same resolver as every other model the run declared.
-"""
+Catalogue declarations identify attackers; the run supplies their models and provenance."""
 
 from __future__ import annotations
 
 from collections.abc import Collection, Sequence
-from typing import TYPE_CHECKING
 
+from redteam_contracts.run_spec import RunSpec
 from redteam_engine.attacker import Attacker
+from redteam_engine.governed import SecretResolver
 from redteam_judges.models import build_chat_model
-
-if TYPE_CHECKING:
-    from redteam_contracts.run_spec import RunSpec
-    from redteam_engine.governed import SecretResolver
 
 
 class AttackerUnbound(RuntimeError):
