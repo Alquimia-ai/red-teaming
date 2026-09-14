@@ -325,8 +325,6 @@ def test_a_stack_that_will_not_come_up_is_a_message_and_an_exit_code(
 ) -> None:
     """docker compose prints its own diagnosis -- an image it cannot pull, a port already bound.
     The command line's job is to end there, with a code, not to raise through subprocess."""
-    from redteam_cli import local
-
     monkeypatch.setattr("redteam_cli.local.shutil.which", lambda _: "/usr/bin/docker")
     monkeypatch.setattr(
         "redteam_cli.local.subprocess.run",
