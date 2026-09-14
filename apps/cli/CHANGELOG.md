@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.0](https://github.com/Alquimia-ai/red-teaming/compare/cli-v0.1.0...cli-v0.2.0) (2026-09-14)
+
+
+### Features
+
+* **cli:** report a version and update from the released assets ([ac904f1](https://github.com/Alquimia-ai/red-teaming/commit/ac904f10b21ccf7fb579db67da6cf227736cc27e))
+
 ## 0.1.0 (2026-09-11)
 
 
