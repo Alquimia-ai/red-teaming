@@ -42,7 +42,6 @@ with the recipe's GB10 settings:
 docker run -d --name nemotron --restart unless-stopped \
   --gpus all --ipc=host -p 8000:8000 \
   -v ~/.cache/huggingface:/root/.cache/huggingface \
-  -e VLLM_USE_FASTOKENS=1 \
   vllm/vllm-openai:v0.28.0 \
   --model nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-BF16 \
   --served-model-name nemotron-3.5-lightning \
@@ -59,6 +58,11 @@ is ready when the model answers:
 ```bash
 curl -s localhost:8000/v1/models | head -c 200
 ```
+
+The recipe also lists `VLLM_USE_FASTOKENS=1` for this checkpoint. Leave it out on
+`vllm/vllm-openai:v0.28.0`: the image carries no `fastokens` package, and vLLM exits on start with
+`ImportError: The 'fastokens' package (>= 0.2.0) is required` -- with `--restart unless-stopped`,
+that is a container restarting forever. It is a tokenizer optimisation, not correctness.
 
 Three flags are the GB10's, not decoration: `--gpu-memory-utilization 0.7` leaves the host its
 share of the 128 GB the CPU and the GPU share, `--mamba-cache-mode align` is what the recipe
@@ -103,7 +107,8 @@ same lifecycle it uses for a Kubernetes Job.
   "judge": {
     "model": "nemotron-3.5-lightning",
     "provider": "openai_compatible",
-    "endpoint": "http://<this machine's IP>:8000/v1"
+    "endpoint": "http://<this machine's IP>:8000/v1",
+    "self_hosted": true
   },
   "context": {"language": "en", "domain": "an assistant under test"},
   "replicas": 2,
@@ -122,8 +127,38 @@ on the stack's network, so they use service names; the judge's `endpoint` is rea
 container and points at the host, so it takes the machine's IP -- `localhost` there would be the
 runner itself.
 
+`"self_hosted": true` is what says this server is yours. Without it the gate refuses the run --
+*"judge names provider 'openai_compatible' with no secret reference"* -- because a **hosted**
+provider must carry the credential its spec declared rather than whatever the process happens to
+hold. A server on your own network answers whoever reaches it, and the flag is also what the
+manifest records as the judge's serving path.
+
 `--follow` exits 0 when the run closes, 1 when it failed, 4 when it is stalled (`redteam run
 resume <id>` relaunches it and it resumes from the difference), 5 on the deadline.
+
+Give `--deadline` room when the judge reasons. Nemotron spends a few hundred tokens thinking
+before each verdict, which puts a ten-unit run at roughly half an hour on one GB10 -- past the
+default 1800s. The deadline only stops the watching: the runner keeps going, `redteam run status
+<id>` picks the count back up, and the run closes on its own.
+
+### When the judge reasons
+
+The judge grades by reading the logprobs of a verdict token, and a reasoning model spends tokens
+before it gets there. The default headroom is 4096; past it the verdict is truncated, retried, and
+then **recorded as ungraded** -- the platform refuses to invent a grade it could not read. In the
+manifest that shows up as `profile_n_ungraded` above zero with everything else healthy.
+
+Nemotron reasons hard on the exchanges that are hardest to judge, so give it room:
+
+```json
+  "judge": {
+    "model": "nemotron-3.5-lightning",
+    "provider": "openai_compatible",
+    "endpoint": "http://<this machine's IP>:8000/v1",
+    "self_hosted": true,
+    "reasoning_budget": 16384
+  },
+```
 
 ## What you get
 
@@ -145,6 +180,7 @@ under `runs/<run_id>/` in MinIO, written once and never rewritten.
 | the run is `stalled` | the store says it is under way, the platform says no runner is alive: `redteam run resume <id>` |
 | the judge 404s on `/v1/models` | vLLM is still loading weights; `docker logs -f nemotron` |
 | vLLM exits on start | lower `--gpu-memory-utilization`, or serve the NVFP4 variant |
+| the judge container says `Restarting` forever | read `docker logs nemotron`: a flag or an environment variable the image does not support exits before the server ever binds |
 | `redteam` is not found | `~/.local/bin` is not on the `PATH` |
 
 ## Next
