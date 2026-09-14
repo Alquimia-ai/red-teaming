@@ -1,0 +1,20 @@
+name: Command line (develop)
+
+# Every push to develop builds the command line for every platform a release publishes, runs it,
+# and installs it with `install.sh` -- and publishes nothing. `develop` is where the delivery path
+# is proved; `main` is where release-please cuts `cli-v<version>` and the same workflow attaches
+# the assets to it. The build of each platform is kept as a workflow artifact for seven days, so a
+# change can be tried before it is released.
+on:
+  push:
+    branches: [develop]
+
+concurrency:
+  group: cli-develop
+  cancel-in-progress: false
+
+jobs:
+  build:
+    uses: ./.github/workflows/build-cli.yml
+    permissions:
+      contents: read

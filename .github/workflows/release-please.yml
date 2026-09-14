@@ -4,7 +4,8 @@ name: Release Please
 # opens one release pull request per component (api, runner, cli), and when that pull request is
 # merged cuts the tag (`api-v1.2.3`) and the GitHub release. Each release then publishes what the
 # component ships: the two images as packages of this repository on ghcr.io under their version and
-# `latest`, and the command line as a single-file zipapp per platform attached to the release.
+# `latest`, and the command line as a single-file zipapp per platform, with its checksum, attached
+# to the release -- which is what `install.sh` and `redteam update` download.
 on:
   push:
     branches: [main]
@@ -54,25 +55,13 @@ jobs:
       contents: read
       packages: write
 
-  # One zipapp per platform, because the command line's dependencies carry compiled wheels. Each
-  # file runs with the platform's own Python 3.12: `./redteam-linux-x86_64.pyz --help`.
+  # The command line: the same workflow that builds it on every pull request and on every push to
+  # develop, this time told which release to attach the assets and their checksums to.
   cli-zipapp:
     needs: release-please
     if: needs.release-please.outputs.cli--release_created == 'true'
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest, macos-15-intel]
-    runs-on: ${{ matrix.os }}
+    uses: ./.github/workflows/build-cli.yml
+    with:
+      release-tag: ${{ needs.release-please.outputs.cli--tag_name }}
     permissions:
       contents: write
-    steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
-      - run: uv python install 3.12
-      - name: Build the zipapp
-        run: scripts/build_pyz.sh dist
-      - name: Attach it to the release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release upload "${{ needs.release-please.outputs.cli--tag_name }}" dist/*.pyz --clobber
