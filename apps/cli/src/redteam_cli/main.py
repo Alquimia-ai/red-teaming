@@ -7,6 +7,8 @@
     redteam run validate <spec> | start <spec> [--follow] [--deadline] | status <id> |
                 result <id> | list | resume <id>
     redteam receiver export <run_id>               what the local receiver was delivered
+    redteam update [--check] [--tag cli-v0.2.0]    replace this command line with the newest release
+    redteam --version                              the version this file was built from
 
 Parsed with the standard library and rendered with rich: tables and panels for a person, `--json`
 wherever the API's answer is worth piping. Exit codes are the outcome -- 0 done, 1 the API refused
@@ -29,7 +31,7 @@ from rich.panel import Panel
 from rich.table import Table
 
 from redteam_cli import api as api_module
-from redteam_cli import bundle, local, workspace
+from redteam_cli import bundle, local, release, workspace
 
 OK, REFUSED, NO_WORKSPACE, UNREACHABLE, STALLED, DEADLINE = 0, 1, 2, 3, 4, 5
 TERMINAL = frozenset({"complete", "failed"})
@@ -391,6 +393,111 @@ def cmd_receiver_export(args: argparse.Namespace, ctx: Context) -> int:
     return OK
 
 
+# ---- the command line itself --------------------------------------------------------------------
+
+
+def _wanted(args: argparse.Namespace, auth: str | None) -> release.Release:
+    try:
+        return release.at(args.tag, auth=auth) if args.tag else release.latest(auth=auth)
+    except release.Unavailable as down:
+        raise Exit(UNREACHABLE, str(down)) from down
+
+
+def cmd_update(args: argparse.Namespace, ctx: Context) -> int:
+    """What this command line is, what the newest release is, and -- unless asked only to look --
+    the second in place of the first."""
+    installed = release.version()
+    auth = release.token()
+    try:
+        asset = release.asset_name()
+    except release.Unsupported as unsupported:
+        raise Exit(REFUSED, str(unsupported)) from unsupported
+    newest = _wanted(args, auth)
+    running = release.zipapp()
+    available = release.is_newer(newest.version, installed)
+    report = {
+        "installed": installed,
+        "available": newest.version,
+        "tag": newest.tag,
+        "asset": asset,
+        "update_available": available,
+        "path": str(running) if running else None,
+    }
+
+    if args.check or not (available or args.force):
+        if ctx.as_json:
+            ctx.show(report)
+            return OK
+        if available:
+            ctx.out.print(
+                f"redteam [bold]{installed}[/bold] -> [bold green]{newest.version}[/bold green] "
+                f"({newest.tag}); `redteam update` replaces it"
+            )
+        else:
+            ctx.out.print(f"redteam [bold]{installed}[/bold] is the newest release ({newest.tag})")
+        return OK
+
+    if running is None:
+        raise Exit(
+            REFUSED,
+            "this command line is not a single file it can replace: it runs from a checkout or an "
+            f"environment. Update it the way it was installed (`uv sync --all-packages` in a "
+            f"checkout), or install the released one with `curl -fsSL {release.INSTALLER} | sh`",
+        )
+
+    ctx.err.print(f"[dim]{newest.tag}: downloading {asset}[/dim]")
+    try:
+        payload = release.fetch(newest.url(asset), auth=auth)
+        published = newest.assets.get(asset + release.CHECKSUM_SUFFIX)
+        release.verify(
+            payload,
+            release.fetch(published, auth=auth).decode() if published else "",
+            name=asset,
+        )
+    except release.Unavailable as down:
+        raise Exit(UNREACHABLE, str(down)) from down
+    except release.Corrupt as wrong:
+        raise Exit(REFUSED, str(wrong)) from wrong
+    if published is None:
+        ctx.err.print(f"[yellow]{newest.tag} publishes no checksum for {asset}[/yellow]")
+
+    try:
+        release.replace(running, payload)
+    except OSError as refused:
+        raise Exit(
+            REFUSED,
+            f"{running} could not be replaced ({refused.strerror or refused}); the file belongs to "
+            f"another user, or its directory is not writable -- re-run with the rights to write it",
+        ) from refused
+
+    if ctx.as_json:
+        ctx.show({**report, "updated": True, "installed": newest.version})
+        return OK
+    ctx.out.print(
+        f"[green]redteam {installed} -> {newest.version}[/green] "
+        f"[dim]({newest.tag}, {running})[/dim]"
+    )
+    return OK
+
+
+class _Version(argparse.Action):
+    """`--version` answers before argparse asks for a command, and prints one plain line: the
+    version is read by people and by scripts, and rich would wrap it for neither."""
+
+    def __init__(self, option_strings: Sequence[str], dest: str, **kwargs: Any) -> None:
+        super().__init__(list(option_strings), dest, nargs=0, **kwargs)
+
+    def __call__(
+        self,
+        parser: argparse.ArgumentParser,
+        namespace: argparse.Namespace,
+        values: Any,
+        option_string: str | None = None,
+    ) -> None:
+        print(f"redteam {release.version()}")
+        parser.exit(OK)
+
+
 # ---- the parser ---------------------------------------------------------------------------------
 
 
@@ -398,6 +505,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="redteam", description="Govern red-teaming runs.")
     parser.add_argument(
         "--json", action="store_true", help="print the API's answer as JSON instead of a table"
+    )
+    parser.add_argument(
+        "-V", "--version", action=_Version, help="the version this command line was built from"
     )
     commands = parser.add_subparsers(dest="command", metavar="command", required=True)
 
@@ -487,6 +597,18 @@ def build_parser() -> argparse.ArgumentParser:
     export = receiver_commands.add_parser("export", help="what the receiver was delivered")
     export.add_argument("run_id")
     export.set_defaults(handler=cmd_receiver_export)
+
+    update = commands.add_parser("update", help="replace this command line with the newest release")
+    update.add_argument(
+        "--check", action="store_true", help="say what is available and change nothing"
+    )
+    update.add_argument(
+        "--tag", default=None, help="a release to install instead of the newest, e.g. cli-v0.1.0"
+    )
+    update.add_argument(
+        "--force", action="store_true", help="install it even when it is not newer than this one"
+    )
+    update.set_defaults(handler=cmd_update)
     return parser
 
 
