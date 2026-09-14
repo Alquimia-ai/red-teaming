@@ -97,8 +97,10 @@ only. The three apps are versioned independently (`api-vX.Y.Z`, `runner-vX.Y.Z`,
 bumps the minor. Only `feat`, `fix`, `perf` and `refactor` appear in changelogs.
 
 Merging a release PR creates the tag and the GitHub Release; the release workflow then pushes the
-app's container image tagged with the version and `latest`, and attaches the CLI zipapp to the
-release. `develop` never releases: each push rebuilds images tagged `develop` and `sha-<short>`.
+app's container image tagged with the version and `latest`, and attaches the CLI zipapp for every
+platform, with its `.sha256`, to the release -- which is what `install.sh` and `redteam update`
+download. `develop` never releases: each push rebuilds images tagged `develop` and `sha-<short>`,
+and builds the command line for every platform without publishing it (`docs/release.md`).
 
 ## Local loop
 

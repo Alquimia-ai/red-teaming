@@ -26,7 +26,8 @@ Complete through the first release. What exists, by layer:
   `resume`), `cli` (`redteam`, argparse and rich, no click; the API as its only door).
 - **Delivery**: images as packages of this repository on every push to `develop` and on every
   release; release-please on `main`, one release per app; the command line as a zipapp per
-  platform.
+  platform, attached to its `cli-v*` release with its checksum, installed by `install.sh` over
+  curl and kept current by `redteam update`. `develop` builds every platform and publishes none.
 - **Deployment**: the local compose stack; the `red-teaming-stack` and `red-teaming-models` Helm
   charts; the model and hardware catalog; the appliance (k3s, SOPS/age, one install script); EKS
   and GKE values.
@@ -43,7 +44,8 @@ packages/        libraries, import names `redteam_<name>`, distributions `red-te
 deploy/          compose (local), charts (Helm), catalog (model x hardware), cloud, appliance
 docs/            adr/ (why), architecture/ (what), components/ (how), deploy/ (operate)
 tests/guards/    tests that protect the architecture, not a feature
-scripts/         repository tooling (ADR validator, Dockerfile renderer)
+scripts/         repository tooling (ADR validator, Dockerfile renderer, the zipapp build)
+install.sh       what `curl ... | sh` runs to install the released command line
 .claude/skills/  commit, pr, adr, catalogue
 ```
 
@@ -165,6 +167,7 @@ Use these words, in this sense, everywhere -- code, docs, commits:
 | `tests/guards/test_image_closure.py` | What an image carries is a property of the graph: the runner serves no HTTP; the API reaches no assistant, model or brain |
 | `tests/guards/test_release_closure.py` | A component's `include-paths` are its dependency closure; the manifest and the pyprojects agree on versions |
 | `tests/guards/test_charts.py` | The charts render with every values file; what they render is what the dispatcher and the seed expect; the seed the chart carries is the seed |
+| `tests/guards/test_cli_distribution.py` | The installer, `redteam update` and the release matrix name the same assets, tags and repository; only a release publishes a command line |
 | `packages/contracts/tests/test_plan_determinism.py` | Work-unit keys derive from the plan alone, across processes |
 
 ## Skills

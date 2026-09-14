@@ -36,6 +36,10 @@ jobs:
       - name: Dockerfiles
         # Rendered from the workspace closure; a hand edit is a drift the guard also refuses.
         run: uv run python scripts/render_dockerfiles.py --check
+      - name: Shell
+        # `install.sh` is piped into whatever `sh` is on somebody's machine, so it is checked like
+        # code. shellcheck is preinstalled on the runner.
+        run: shellcheck install.sh scripts/build_pyz.sh deploy/appliance/install.sh
 
   charts:
     # The charts render on every change, with the appliance's and each cloud's values, and what
@@ -66,20 +70,11 @@ jobs:
       - name: Guards over the rendered charts
         run: uv run pytest -q tests/guards/test_charts.py
 
-  cli-zipapp:
-    # The command line ships as one file per platform on a release; building it here on every change
-    # is what keeps that release step from being the first time anybody tries.
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
-        with:
-          enable-cache: true
-      - run: uv python install 3.12
-      - name: Build
-        run: scripts/build_pyz.sh dist
-      - name: Run it
-        run: |
-          PYZ=$(ls dist/*.pyz)
-          "$PYZ" --help
-          "$PYZ" run --help
+  cli:
+    # One platform on a pull request, the whole matrix on develop (`cli-develop.yml`) and on a
+    # release: the same workflow each time, so a release is never the first time anybody builds it.
+    uses: ./.github/workflows/build-cli.yml
+    with:
+      runners: '["ubuntu-latest"]'
+    permissions:
+      contents: read

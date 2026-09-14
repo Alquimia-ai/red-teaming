@@ -19,6 +19,7 @@ immutable: once accepted they are not rewritten in place; they are superseded by
 | [010](010-reserve-bundle-identity-and-pin-priors.md) | Reserve bundle identity and pin realism priors | ✅ Accepted | catalogue, store, contracts, api |
 | [011](011-resume-frozen-runs-and-replace-terminal-jobs.md) | Resume frozen runs and replace terminal Jobs | ✅ Accepted | api, dispatch, deploy |
 | [012](012-explicit-work-identity-and-collaborator-contracts.md) | Explicit work identity and collaborator contracts | ✅ Accepted | engine, typing, architecture |
+| [013](013-the-command-line-is-released-installed-and-updated-as-one-file.md) | The command line is released, installed and updated as one file | ✅ Accepted | cli, ci, releases, deploy |
 
 **Status legend:** ✅ Accepted · 📝 Proposed · 🚫 Deprecated · ↩️ Superseded by ADR-NNN
 

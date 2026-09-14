@@ -1,0 +1,103 @@
+name: Build the command line
+
+# One zipapp per platform, built from the repository root by the same script a person runs
+# (`scripts/build_pyz.sh`), verified by running it and by installing it with `install.sh`, and --
+# only when a release tag is given -- attached to that release with its checksum. Reused by the
+# pull-request check, by the develop build and by release-please, so what `develop` verifies and
+# what a release publishes cannot drift: same script, same runners, same checks.
+#
+# One file per platform, because the command line's dependencies carry compiled wheels. Each file
+# runs with the platform's own Python 3.12: `./redteam-linux-x86_64.pyz --version`.
+on:
+  workflow_call:
+    inputs:
+      runners:
+        description: "JSON array of runner labels: one asset per entry"
+        required: false
+        type: string
+        default: '["ubuntu-latest", "ubuntu-24.04-arm", "macos-latest", "macos-15-intel"]'
+      release-tag:
+        description: "a `cli-v*` tag; when given, every built file is attached to that release"
+        required: false
+        type: string
+        default: ""
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: ${{ fromJSON(inputs.runners) }}
+    runs-on: ${{ matrix.runner }}
+    # No permissions of its own: a called workflow may not ask for more than its caller was
+    # granted, and asking for what only the release needs would refuse to start for the two
+    # callers that publish nothing. The caller decides -- read to verify, write to attach.
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Python 3.12 on the PATH
+        # The zipapp's first line asks the platform for `python3.12`, so running it here needs one
+        # under that name, on every runner in the matrix. uv's own managed interpreter is the one
+        # the wheels were resolved against -- resolved from outside the checkout, so that it is
+        # never this workspace's virtual environment, whose site-packages would hide a dependency
+        # the zipapp forgot to carry.
+        working-directory: ${{ runner.temp }}
+        run: |
+          uv python install 3.12
+          mkdir -p python
+          ln -sf "$(uv python find --no-project --managed-python 3.12)" python/python3.12
+          echo "$RUNNER_TEMP/python" >> "$GITHUB_PATH"
+
+      - name: Build
+        run: scripts/build_pyz.sh dist
+
+      - name: Its checksum
+        # Published beside the asset, and checked by both `install.sh` and `redteam update` before
+        # anything is written over a command line somebody is running.
+        run: |
+          cd dist
+          for file in *.pyz; do
+            if command -v sha256sum >/dev/null 2>&1; then
+              sha256sum "$file" > "$file.sha256"
+            else
+              shasum -a 256 "$file" > "$file.sha256"
+            fi
+            cat "$file.sha256"
+          done
+
+      - name: It runs
+        run: |
+          set -eu
+          pyz="$(ls dist/*.pyz)"
+          "$pyz" --version
+          "$pyz" --help > /dev/null
+          "$pyz" run --help > /dev/null
+          "$pyz" update --help > /dev/null
+
+      - name: The installer installs it
+        # The whole delivery path on the platform that built the file: the name `install.sh`
+        # resolves to is the name the build produced, the installed file runs, and the version it
+        # reports is the version this workspace carries.
+        run: |
+          set -eu
+          pyz="$(ls dist/*.pyz)"
+          test "$(sh install.sh --print-asset)" = "$(basename "$pyz")"
+          sh install.sh --from "$pyz" --dir "$RUNNER_TEMP/bin"
+          version="$(grep -m1 '^version' apps/cli/pyproject.toml | cut -d'"' -f2)"
+          test "$("$RUNNER_TEMP/bin/redteam" --version)" = "redteam $version"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cli-${{ matrix.runner }}
+          path: dist/redteam-*.pyz*
+          retention-days: 7
+          if-no-files-found: error
+
+      - name: Attach it to the release
+        if: inputs.release-tag != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "${{ inputs.release-tag }}" dist/redteam-*.pyz dist/redteam-*.pyz.sha256 --clobber
