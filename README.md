@@ -57,6 +57,7 @@ tests/           guards · e2e · live
 
 | Read | For |
 |---|---|
+| [`docs/get-started.md`](docs/get-started.md) | one machine, end to end: the command line, a judge, the platform, a run |
 | [`docs/architecture/`](docs/architecture/) | what a run is, the store, the catalogue bundle, the packages |
 | [`docs/components/`](docs/components/) | the API's routes, the runner's pipeline, the command line |
 | [`docs/deploy/`](docs/deploy/) | the local stack, a cluster, the appliance, a cloud, the models |
