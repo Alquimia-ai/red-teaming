@@ -1,33 +1,17 @@
-"""Reaching an OCI registry for a brain pinned by digest.
+"""Resolve and fetch OCI brain references pinned by digest.
 
-`RegistryClient` is the protocol the Boltzmann SDK says is "implemented by the caller", and the
-shipped ORAS implementation is right for everything except the one case a run always uses.
-
-**Why this exists.** The shipped client resolves a manifest by building `f"{reference}:{tag}"`,
-which is the tag form. A run's `kb_ref` is pinned by digest -- the API refuses anything else,
-because a tag moves like a git branch and longitudinal validity needs an oracle nobody can move out
-from under a finished run. Handing a digest to the tag slot does not fail; ORAS parses
-`ghcr.io/org/brain:sha256:abc` into registry `docker.io`, repository `sha256`, tag `abc`, and asks
-Docker Hub for a repository named after the algorithm. What comes back is a 404 about something
-nobody was looking for.
-
-So the reference is built here in the form a digest actually takes, `repository@sha256:...`, and
-everything else -- authentication, blob download, the digest check the store performs on arrival --
-is the shipped client's, unchanged. This is a narrow compensation for one construction, not a
-second OCI client.
-"""
+ORAS interprets repository:sha256:digest as a tag reference, so resolve digest pins using
+repository@sha256:digest. Keep authentication, download and integrity checks in the SDK."""
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
+from boltzmann import BlockStore, OciDigest
+from boltzmann.distribution import BrainManifest
 from boltzmann.distribution.registry import RegistryClient
 
 __all__ = ["DigestAwareRegistry", "RegistryClient", "reference_for"]
-
-if TYPE_CHECKING:
-    from boltzmann import BlockStore, OciDigest
-    from boltzmann.distribution import BrainManifest
 
 DIGEST_PREFIX = "sha256:"
 

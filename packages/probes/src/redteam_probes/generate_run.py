@@ -1,14 +1,7 @@
-"""One run's probe set: generated in the runner's process, written once, pinned by `probes.json`.
+"""Generate and pin a run's content-addressed probes, or reuse its existing pointer.
 
-**One pull per run, and the brain dies with the generation.** That is not a cache and must never
-become one: the brain is pulled into a temporary directory, read, and discarded, so the client's
-knowledge is resident for exactly as long as reading it takes.
-
-What is written is the blob by digest -- shared with every other run over the same base and
-catalogue -- and the run's own `probes.json`, whose existence is what pins the run's set: a runner
-that finds it reads the digest from there and never generates again, so a catalogue published
-between two launches of one run cannot change the plan.
-"""
+A pulled brain is temporary and discarded after generation. Shared probe blobs are immutable;
+the run's probes.json freezes its set across retries and later catalogue publications."""
 
 from __future__ import annotations
 

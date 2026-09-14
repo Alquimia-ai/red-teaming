@@ -1,22 +1,7 @@
-"""Conducting profile-then-exploit, with the governance around it.
+"""Profile, reject unusable profiles, and optionally exploit the resulting weaknesses.
 
-The search itself is gaussia's and is not reimplemented here. What the engine owns is everything
-gaussia does not govern: the gates before the first turn, the budget, recording each exchange as it
-closes, keeping the profile and the report as control artifacts, and knowing when the profile is too
-thin to build on.
-
-**What crosses out of conduction is provenance, never a measurement.** Two gradings run inside a
-run and both are control: the Profiler's produces the weakness profile the Exploiter reads, and the
-Exploiter's ranks categories. Both may threshold and average -- `tau` and `eta` are thresholds --
-and both are kept in the store as control artifacts, labelled so, because an operator wants to read
-them. What they must never do is enter the coverage: a reader who finds `tau` in the config and a
-score in the manifest would divide one by the other, and the manifest would then claim something
-the run never measured. So `Conducted` carries counts and components, and no report; the report
-reaches the store through `ControlArtifacts` and the manifest names its key.
-
-The evidence -- every conversation -- is already in the store by the time this returns, written by
-the recorder as each exchange closed, which is why nothing here has to carry it out.
-"""
+Profile and exploitation scores are control artifacts, never coverage measurements. Persist
+those artifacts as they become available; return counts, provenance and dataset sessions."""
 
 from __future__ import annotations
 
@@ -138,32 +123,12 @@ def conduct(
     ledger: FailureLedger | None = None,
     artifacts: Artifacts | None = None,
 ) -> Conducted:
-    """Run the profiler, check the profile is worth building on, run the exploiter if there is one.
+    """Profile the complete plan, persist control artifacts and optionally search it.
 
-    Args:
-        ledger: What the governed target recorded about every failed exchange. Read before the
-            thin-profile check: when one kind of transport failure explains the outage, the run
-            dies as that kind -- `unauthorized`, `rate_limited` -- with the target's own words in
-            the record, rather than as a count of ungraded exchanges that sends the reader to open
-            thirty traces to learn they were all a 401. The generic refusal stays for the mixed
-            case, and for a run conducted without a ledger.
-        profiler: gaussia's, built over the governed target.
-        probes: One per unit of the **whole** plan, in plan order. The target behind the profiler
-            answers the closed ones from their traces and sends the pending ones live, so the
-            profile and the thin-profile ratio describe the run and not this attempt's tail.
-        recorder: Counts of the planned and generated traces persisted during conduction.
-        exploiter: gaussia's, or `None` when the run declared no generator to search with. Absent
-            is recorded rather than silently skipped: a manifest that does not say the search never
-            ran reads exactly like one for a run whose search found nothing.
-        build_dataset: Given the Profiler's result, the Exploiter's report (or None) and what the
-            search reported about itself (or None when no search was attempted), returns the attack
-            dataset. Supplied by the caller closed over the run-level inputs -- the plan's units,
-            the context -- that conduction does not carry. Called here so the caller can checkpoint
-            the search however it went: a relaunch must not search again, and must still carry the
-            search's provenance.
-        components: What the caller knows about the pieces -- the target kind, the judge.
-        artifacts: Where the profile and the report are kept -- `ControlArtifacts` over the run's
-            store. `None` keeps neither, which is only sensible in a test.
+    The profiler handles replay; recorder supplies persisted trace counts. A dominant transport
+    failure or excessive ungraded ratio rejects the profile before search. Artifacts retain the
+    profile before exploitation and the report on success. The dataset callback receives search
+    provenance, including failure or absence, so recovery can preserve the original evidence.
     """
     result = profiler.profile(probes)
 

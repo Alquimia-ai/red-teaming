@@ -1,31 +1,8 @@
-"""The Alquimia runtime: an assistant whose one turn is two requests.
+"""Submit an inference task and poll its worklog for the assistant's response.
 
-A plain chat endpoint posts a question and reads the answer off the response. This runtime does
-not work that way. `POST /event/infer/{assistant_id}` accepts the query and answers with a
-**task id**; the assistant's actual words arrive later. So one `send()` is a submission followed by
-a wait, and the wait is where every failure mode lives.
-
-**The answer is read off the worklog rather than the event stream.** Both exist -- `GET
-/event/stream/{task_id}` emits the same run as server-sent events and closes on the terminal
-`AssistantInferenceResponse` -- and the stream loses a race the poll cannot. Measured against a live
-runtime, tasks close in one and a half to four seconds; a stream opened after the task finished has
-no event left to deliver, so the turn waits out its whole deadline for an answer that was already
-sitting in the worklog. The poll asks a question that is true whenever it is asked.
-
-**The runtime spells its fields two ways, and both are read.** The request body takes `task_id` and
-`session_id`; the response model returns `taskid` and `sessionid`, concatenated. That is not a guess
-about a typo -- it is what the runtime's own OpenAPI document declares for
-`AssistantInferencePayload` and for `CommonAttributes`, so an adapter that reads one spelling works
-against half the API.
-
-**Sessions are never invented here.** `TargetAssistant.send` takes a session to continue, and the
-only caller that passes one is the engine conducting a strategy the catalogue delivers as many
-turns: it opens with none, and continues with the session this adapter read back off the runtime.
-Every static probe is sent with none and is its own conversation. Pinning a session here would
-invent a continuity no caller asked for, and it would do damage -- an assistant that remembers being
-attacked answers the next probe differently, which turns independent probes into one long
-conversation nobody can read a rate off. A session a caller hands in is forwarded and honoured.
-"""
+Polling avoids missing a terminal event when a stream is opened after task completion.
+Read both task_id/session_id and taskid/sessionid spellings used by the runtime. Forward the
+caller's session and return the runtime's session; never invent continuity between probes."""
 
 from __future__ import annotations
 

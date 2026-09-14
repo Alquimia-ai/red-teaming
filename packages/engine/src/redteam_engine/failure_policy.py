@@ -1,20 +1,7 @@
-"""What the engine does about a kind of transport failure. Data, keyed by kind, never an `if`.
+"""Map classified transport failures to retry, give-up or abort policies.
 
-The target adapter says what happened (`TransportFailure.kind`); this says what to do about it, and
-the two are kept apart on purpose. An adapter that decided to retry would be an adapter that talks
-to the assistant more than the plan says, outside the budget and the rate gate; an engine that
-decided what a 429 *is* would be a second copy of the mapping. So the adapter classifies, and the
-governed door asks this table.
-
-Three answers exist. **Retry**: the same probe, after backing off, up to the run's `max_retries` --
-for a failure that says the channel will recover. **Give up**: the unit is marked failed and left
-pending for the next attempt -- for a failure that repeating the request would not change.
-**Abort**: the run stops, with the kind's own exception -- for a failure that makes every further
-call a wasted attack on the assistant, which is what a refused credential is.
-
-A kind nothing registered a policy for is given up on. That is the honest default: a failure we do
-not understand is not one we should keep paying somebody else's infrastructure to reproduce.
-"""
+Retries stay inside governed calls and consume budget. Give-up leaves a failed unit eligible for
+a later attempt; abort stops the run. Unknown failure kinds default to give-up."""
 
 from __future__ import annotations
 

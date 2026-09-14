@@ -1,20 +1,7 @@
-"""The shape of a run, seen from the runner.
+"""Run the frozen specification through generation, conduction and manifest delivery.
 
-    spec.json (frozen by the API)   -> the request, read once
-    probes.json  -> blobs/{digest}  -> generation, in this process, or the pinned set
-    expand -> difference            -> the plan, and what of it the store already holds
-    attack                          -> traces/..., profile.json, exploit.json, dataset.json
-    manifest.json                   -> the run closed; the webhook says where to read
-
-If the process dies anywhere, resumption needs no new mechanism: `probes.json`, the traces, the
-control artifacts and the dataset are keys in the store, so their existence is the record. The next
-launch of the same run id reads what is there and does the rest.
-
-**A failure is not a closed run.** An exception anywhere after the attempt began -- generation
-refused as much as the attack -- writes a failure record under `runs/{id}/failures/` and exits
-non-zero; it never writes `manifest.json`, whose existence means COMPLETE to every reader of the
-store. The platform's retry policy relaunches, and the relaunch resumes from the difference.
-"""
+Reuse pinned probes and completed traces. A failure writes an attempt record and exits nonzero;
+only a successfully assembled result writes the completion manifest."""
 
 from __future__ import annotations
 

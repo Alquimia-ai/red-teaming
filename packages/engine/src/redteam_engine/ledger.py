@@ -1,15 +1,7 @@
-"""Every transport failure of an attempt, kept so the run can be told what its outage was.
+"""Track transport failures and recoveries for one attempt.
 
-The Profiler counts ungraded exchanges and `conduct` refuses a profile with too many of them: "the
-profile would describe an outage rather than the assistant". That refusal is right and, alone, its
-diagnosis is not -- it says how many, never what. The ledger is what the governed door writes every
-failure into, and its verdict is the typed version of the same refusal: when the failed share is
-past the alarm and one kind accounts for most of it, the run dies as that kind, with the record.
-
-Per attempt, on purpose. A relaunch sends every unit marked failed live again, so seeding the
-ledger from earlier markers would count the same unit twice; and the one kind that must not wait
-for a ratio -- a refused credential -- is aborted by the policy on its first occurrence anyway.
-"""
+A dominant failure kind can explain an unusable profile more precisely than its ungraded count.
+Do not seed from earlier attempts: retried failures would be counted twice."""
 
 from __future__ import annotations
 

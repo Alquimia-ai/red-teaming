@@ -5,20 +5,17 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Mapping
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from gaussia.schemas.roastme import TargetResponse
 
+from redteam_contracts.plan import WorkUnit
 from redteam_contracts.trace import Role, Trace, TraceLabels, Turn
 from redteam_engine.planned import Conversation, static
 from redteam_store import layout
 from redteam_store.codec import encode_trace
-from redteam_store.interface import ObjectAlreadyExists
+from redteam_store.interface import ObjectAlreadyExists, ObjectStore
 from redteam_target.failures import failure_of
-
-if TYPE_CHECKING:
-    from redteam_contracts.plan import WorkUnit
-    from redteam_store.interface import ObjectStore
 
 PROFILE = "profile"
 EXPLOIT = "exploit"
@@ -65,10 +62,7 @@ class Recorder:
     ) -> None:
         conversation = conversation if conversation is not None else static(query, response)
         if conversation.final.failed:
-            # The cursor advanced -- the Profiler counted this probe -- but nothing closes: the unit
-            # is marked, not written, and the record of what went wrong is the marker's body. A
-            # conducted conversation whose last turn failed is in the same position: the turns
-            # before it were answered, but the unit was not, and the next attempt conducts it again.
+            # A failed final turn leaves this unit open for another attempt.
             self._mark_failed(unit, conversation.final)
             return
         probe = self._probes.get(unit.probe_id, {})

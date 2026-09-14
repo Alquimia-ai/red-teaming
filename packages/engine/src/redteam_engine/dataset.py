@@ -5,17 +5,12 @@ from __future__ import annotations
 from collections import defaultdict
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
 
 from gaussia.generators.roastme.dataset import report_to_dataset, to_dataset
 from gaussia.schemas.common import Dataset
-from gaussia.schemas.roastme import RoastBatch
+from gaussia.schemas.roastme import FailureReport, GradedOutcome, Probe, RoastBatch
 
 from redteam_engine.outcomes import UnitOutcome
-
-if TYPE_CHECKING:
-    from gaussia.schemas.roastme import FailureReport, GradedOutcome, Probe
-
 
 EXPLOIT_SESSION = "exploit"
 """The suffix the search's session gets: `{run_id}:exploit`. The one place that names it; the resume

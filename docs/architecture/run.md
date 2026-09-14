@@ -47,7 +47,7 @@ resumption and coverage at once.
 
 ## 5. The attack
 
-Every unit of the plan is handed to gaussia's Profiler in order, through two doors. `ResumingTarget`
+Every unit of the plan is handed to gaussia's Profiler through `PlanProfiler`. Its target adapter
 answers closed units from their traces -- the last agent turn, the one that was graded -- and
 sends the rest live. `GovernedTarget` is the live door: the capability gate before the first turn,
 every call charged to the budget and paced, transport failures acted on by kind (retry as the

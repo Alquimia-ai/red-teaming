@@ -20,16 +20,13 @@ to catch rather than to commit.
 from __future__ import annotations
 
 from collections.abc import Iterable
-from typing import TYPE_CHECKING
 
+from gaussia.core.entity_enumerator import EntityEnumerator
 from gaussia.core.hook_verifier import HookVerifier
 from gaussia.generators.roastme.probes.verification import NearMissVerifier
+from gaussia.schemas.roastme import Document, KnowledgeHook
 
-if TYPE_CHECKING:
-    from gaussia.core.entity_enumerator import EntityEnumerator
-    from gaussia.schemas.roastme import Document, KnowledgeHook
-
-    from redteam_contracts.kb import KnowledgeBase
+from redteam_contracts.kb import KnowledgeBase
 
 
 class BrainHookVerifier(HookVerifier):  # type: ignore[misc]  # gaussia ships no stubs

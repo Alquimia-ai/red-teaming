@@ -1,25 +1,17 @@
-"""Embeddings over an OpenAI-compatible API, for the realism estimator.
+"""Fetch embeddings from the declared OpenAI-compatible endpoint for realism estimation.
 
-gaussia's `EmbeddingRealismEstimator` takes an `Embedder` and ships two, both of which need torch.
-Neither is installed and neither should be -- the runner is the image that starts once per run, and
-pulling a deep learning runtime into it to embed a few hundred short strings is the wrong trade.
-The embedding model arrives as configuration exactly as the judge's does, and the endpoint with it.
-
-The request shape is the OpenAI one -- `{"model", "input": [...]}` in, `data[i].embedding` out --
-which every hosted provider and every self-hosted server worth pointing at speaks, vLLM's
-embeddings server included.
-"""
+Use explicit model configuration and credentials. Provider failures must not become fabricated
+vectors or an apparently valid realism comparison."""
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import httpx
 import numpy as np
 from gaussia.core.embedder import Embedder
 
-if TYPE_CHECKING:
-    from redteam_contracts.run_spec import ModelSpec
+from redteam_contracts.run_spec import ModelSpec
 
 DEFAULT_TIMEOUT = 60.0
 BATCH = 64
