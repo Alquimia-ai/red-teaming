@@ -1,32 +1,14 @@
-"""`GovernedTarget`: the single door every call to the assistant goes through.
+"""Apply capability checks, budgets, pacing and retries to every live target call.
 
-gaussia governs the search; it governs nothing operational. The budget, the pacing gate, the
-safe-mode gate, retrying what the policy says will recover, and writing each exchange to the store
-are all the engine's, and all of them have to happen on every call -- so rather than scattering them
-through a conduction loop, they wrap the adapter.
-
-The trick is that gaussia does not know this exists. To the `Profiler` and the `Exploiter` it is a
-`TargetAssistant` like any other. Which means the governance **cannot be bypassed** -- there is no
-other door -- and nothing had to be forked to install it.
-
-**A retry happens inside one `send`.** gaussia sends one query per probe and reads one answer, and
-the recorder behind this door maps the k-th answer to the k-th unit; a retry that surfaced as a
-second exchange would shift every unit after it by one. So the loop is here, the Profiler sees one
-exchange, and the recorder sees one -- the last attempt's.
-
-**So does a conversation, for the same reason.** A strategy the catalogue delivers as many turns is
-still one `send` to gaussia: the opening goes out, an attacker writes what to say next from what
-came back, every turn passes through the same budget, pacing and retry as a single call, and gaussia
-grades the final answer -- what the escalation obtained. The recorder sees one exchange carrying the
-whole conversation. Which delivery a `send` gets is read by position, the way the recorder reads
-which unit it closes: the k-th live exchange is the k-th planned delivery, and anything past the
-plan -- the search's own conversations -- is static.
+A planned delivery is passed explicitly. Retries and conversation turns stay inside one
+exchange; the recorder receives the whole conversation before a fatal error propagates.
+Ordinary `send` is a static exploitation exchange, without a planned work-unit identity.
 """
 
 from __future__ import annotations
 
 import time
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from typing import Protocol
 
@@ -147,8 +129,6 @@ class GovernedTarget(TargetAssistant):  # type: ignore[misc]  # gaussia ships no
     """A target with the gates, the budget, the retry policy and the recording attached.
 
     Args:
-        planned: How each live unit is delivered, in the order the units reach this door. Empty
-            means every exchange is static, which is what a run with no delivery sidecar is.
         attackers: The attackers the planned deliveries name, by id, already built. A delivery
             naming an id absent here is a wiring error the runner refuses before the first turn;
             reaching it here raises rather than delivering one turn in silence.
@@ -161,10 +141,9 @@ class GovernedTarget(TargetAssistant):  # type: ignore[misc]  # gaussia ships no
         gate: CapabilityGate,
         budget: Budget,
         rate: RateGate | None = None,
-        on_exchange: object = None,
+        on_exchange: Callable[[str, TargetResponse, Conversation], None] | None = None,
         max_retries: int = DEFAULT_MAX_RETRIES,
         ledger: FailureLedger | None = None,
-        planned: Sequence[PlannedDelivery] = (),
         attackers: Mapping[str, AttackerProtocol] | None = None,
     ) -> None:
         gate.assert_may_attack()  # before the first turn, not on the first failure
@@ -173,12 +152,10 @@ class GovernedTarget(TargetAssistant):  # type: ignore[misc]  # gaussia ships no
         self._rate = rate or RateGate()
         self._on_exchange = on_exchange
         self._max_retries = max_retries
-        self._planned = list(planned)
         self._attackers = dict(attackers or {})
         self.ledger = ledger or FailureLedger()
         self.exchanges: list[tuple[str, TargetResponse]] = []
-        """The opening and the final answer of every closed exchange. One entry per `send`, which is
-        what indexes the planned deliveries."""
+        """The opening and final answer of each completed exchange."""
 
         self.conversations: list[Conversation] = []
         """Every closed exchange, whole."""
@@ -201,8 +178,26 @@ class GovernedTarget(TargetAssistant):  # type: ignore[misc]  # gaussia ships no
             self.fatal = failed
             raise
 
-    def _send(self, query: str, session_id: str | None = None) -> TargetResponse:
-        planned = self._planned_next()
+    def send_planned(
+        self,
+        query: str,
+        planned: PlannedDelivery,
+        on_exchange: Callable[[str, TargetResponse, Conversation], None],
+        session_id: str | None = None,
+    ) -> TargetResponse:
+        try:
+            return self._send(query, session_id, planned, on_exchange)
+        except BaseException as failed:
+            self.fatal = failed
+            raise
+
+    def _send(
+        self,
+        query: str,
+        session_id: str | None = None,
+        planned: PlannedDelivery | None = None,
+        on_exchange: Callable[[str, TargetResponse, Conversation], None] | None = None,
+    ) -> TargetResponse:
         if planned is None or not planned.delivery.conducted:
             response, fatal = self._exchange(query, session_id)
             conversation = static(query, response) if response is not None else None
@@ -225,18 +220,12 @@ class GovernedTarget(TargetAssistant):  # type: ignore[misc]  # gaussia ships no
         # Recorded before anything is raised -- the store is the evidence, and a run that died of a
         # 401 should show the 401 -- and recorded once, whole, whatever the delivery.
         if conversation is not None:
-            self._close(conversation)
+            self._close(conversation, on_exchange)
         if fatal is not None:
             self.fatal = fatal
             raise fatal
         assert conversation is not None
         return conversation.final
-
-    def _planned_next(self) -> PlannedDelivery | None:
-        """The delivery of the exchange about to be sent: the k-th planned for the k-th live
-        exchange, and none -- static -- past the plan, where the search's own conversations are."""
-        index = len(self.exchanges)
-        return self._planned[index] if index < len(self._planned) else None
 
     def _exchange(
         self, query: str, session_id: str | None
@@ -287,11 +276,16 @@ class GovernedTarget(TargetAssistant):  # type: ignore[misc]  # gaussia ships no
                 return response, error_for(failure)
             return response, None
 
-    def _close(self, conversation: Conversation) -> None:
+    def _close(
+        self,
+        conversation: Conversation,
+        on_exchange: Callable[[str, TargetResponse, Conversation], None] | None = None,
+    ) -> None:
         self.exchanges.append((conversation.opening, conversation.final))
         self.conversations.append(conversation)
-        if callable(self._on_exchange):
-            self._on_exchange(conversation.opening, conversation.final, conversation)
+        callback = on_exchange if on_exchange is not None else self._on_exchange
+        if callback is not None:
+            callback(conversation.opening, conversation.final, conversation)
 
 
 def attackable(
@@ -299,9 +293,8 @@ def attackable(
     resolver: SecretResolver,
     *,
     budget: Budget,
-    on_exchange: object = None,
+    on_exchange: Callable[[str, TargetResponse, Conversation], None] | None = None,
     ledger: FailureLedger | None = None,
-    planned: Sequence[PlannedDelivery] = (),
     attackers: Mapping[str, AttackerProtocol] | None = None,
 ) -> GovernedTarget:
     """The only way a run gets a target: built by name, wrapped before the first turn.
@@ -326,6 +319,5 @@ def attackable(
         on_exchange=on_exchange,
         max_retries=connector.max_retries,
         ledger=ledger,
-        planned=planned,
         attackers=attackers,
     )

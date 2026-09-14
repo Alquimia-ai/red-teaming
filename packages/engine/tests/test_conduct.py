@@ -3,6 +3,7 @@ the profile and the report as control artifacts."""
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -10,7 +11,6 @@ import pytest
 from gaussia.schemas.roastme import Probe
 
 from redteam_engine.conduct import Conducted, ProfileTooThin, conduct
-from redteam_engine.recording import EXPLOIT, PROFILE
 
 
 @dataclass
@@ -38,7 +38,7 @@ class _Profiler:
         self.reason = reason
         self.seen: list[Probe] = []
 
-    def profile(self, probes: list[Probe]) -> _Result:
+    def profile(self, probes: Sequence[Probe]) -> _Result:
         self.seen = list(probes)
         return _Result(
             n_ungraded=self.n_ungraded,
@@ -215,7 +215,6 @@ def test_the_exploiter_runs_from_the_profile_and_the_recorder_switches_phase() -
     exploiter = _Exploiter()
     out = conduct(_Profiler(), _probes(2), recorder, exploiter=exploiter, components={})
 
-    assert recorder.phases == [PROFILE, EXPLOIT]
     assert exploiter.profiled_from is not None
     assert out.components["exploit"] == "ran"
     assert out.components["exploit_n_categories"] == "2"

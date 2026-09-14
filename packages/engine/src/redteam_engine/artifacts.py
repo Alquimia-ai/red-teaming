@@ -16,7 +16,8 @@ relaunch that profiles again over the same traces finds the key taken and leaves
 from __future__ import annotations
 
 import contextlib
-from typing import Any
+
+from gaussia.schemas.roastme import FailureReport, ProfilerResult
 
 from redteam_store import layout
 from redteam_store.codec import encode_json
@@ -30,7 +31,7 @@ class ControlArtifacts:
         self._store = store
         self._run_id = run_id
 
-    def profile(self, result: Any) -> str:
+    def profile(self, result: ProfilerResult) -> str:
         """The weakness profile with what the profiling reported about itself. Returns the key."""
         payload = {
             "profile": result.profile.model_dump(mode="json"),
@@ -49,7 +50,7 @@ class ControlArtifacts:
 
         put_same(self._store, layout.recovery(self._run_id, "exploit-started"), b'{"version":1}')
 
-    def exploit(self, report: Any) -> str:
+    def exploit(self, report: FailureReport) -> str:
         """The exploitation report, whole: the ranked categories with their queries, the queries
         over the threshold, and which implementation of each substitutable piece produced them.
         Returns the key."""

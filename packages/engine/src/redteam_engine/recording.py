@@ -1,42 +1,13 @@
-"""Writing each conversation the instant it closes, under the key the plan gave it.
-
-The plan's whole argument rests on one property: the key of a work unit is derivable before it is
-executed, so "the key exists" and "the unit completed" are the same statement. This is the object
-that keeps the promise on the profiling side. It sits behind `GovernedTarget.on_exchange`, so every
-exchange the Profiler makes is written before the next one is sent -- a runner that dies between two
-probes has lost nothing it paid for.
-
-**The mapping from exchange to unit is positional, on purpose.** gaussia's Profiler sends its probes
-one by one, in the order it was handed them, and calls the target once per probe. So the k-th
-exchange the target sees belongs to the k-th probe the Profiler was given -- and the target in front
-of this recorder lets through exactly the units with no recorded answer, in plan order. Mapping by
-query text instead would break the day two strategies phrase the same question, which a catalogue
-is free to do.
-
-Exchanges the search generates have no unit behind them: they are evidence beyond the plan, keyed
-by their own content and aimed at no plugin. They count as evidence, never as coverage -- which is
-exactly the distinction the coverage report exists to draw.
-
-**A failed exchange does not close its unit.** Written under the planned key like any answer, "the
-key exists" would say "the unit completed" about a unit the assistant never answered: the resumed
-run would replay the failure into the judge, the thin-profile ratio would count it again, and the
-only way to ever retry that probe would be a new run id. A transport failure is written under the
-unit's failure marker instead, with the record as its body, so the difference reports the unit
-`failed`, the next attempt sends it live, and the evidence of what went wrong is still in the store.
-
-**An exchange is a conversation, and a trace is all of it.** The door hands over every turn it
-sent and every answer it read -- one pair for a static delivery, several for a conducted one -- and
-the trace carries them all, in order, under the one key the unit has. The labels say what it
-charged, how it was delivered, how deep it went, who steered it and why it stopped; the same trace
-read by the next attempt replays its last answer, which is the one gaussia graded.
-"""
+"""Persist conversations under explicit planned identities or exploitation keys."""
 
 from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any
+
+from gaussia.schemas.roastme import TargetResponse
 
 from redteam_contracts.trace import Role, Trace, TraceLabels, Turn
 from redteam_engine.planned import Conversation, static
@@ -59,30 +30,15 @@ _IDENTITY_CHARS = 32
 
 
 class Recorder:
-    """Turns `(query, response)` into a written trace, keyed by phase.
-
-    Args:
-        store: Where traces go. Append-only, which is what makes a second attempt at a closed unit
-            harmless rather than a duplicate.
-        run_id: The run every trace belongs to.
-        live: The units that will reach the target live, **in the order they will reach it** --
-            every unit of the plan with no recorded answer. The k-th exchange is the k-th of these.
-        probes: The probe each unit sends, by probe id, so the trace can carry what it aimed at.
-    """
-
     def __init__(
         self,
         store: ObjectStore,
         run_id: str,
-        live: Sequence[WorkUnit],
         probes: Mapping[str, Mapping[str, Any]],
     ) -> None:
         self._store = store
         self._run_id = run_id
-        self._live = list(live)
         self._probes = probes
-        self._sent = 0
-        self.phase = PROFILE
         self.written = 0
         """Traces written: exchanges the assistant answered, planned or beyond the plan."""
 
@@ -92,23 +48,22 @@ class Recorder:
         self.failed = 0
         """Planned units marked failed this attempt: sent, not answered, left for the next one."""
 
-    def __call__(self, query: str, response: Any, conversation: Conversation | None = None) -> None:
-        """One closed exchange. `query` and `response` are its opening and its final answer;
-        `conversation` is all of it, and `None` means the one pair those two make."""
-        whole = conversation if conversation is not None else static(query, response)
-        if self.phase == PROFILE:
-            self._record_planned(whole)
-        else:
-            self._record_beyond_plan(whole)
+    def __call__(
+        self, query: str, response: TargetResponse, conversation: Conversation | None = None
+    ) -> None:
+        """Record an exploitation exchange, which has no planned identity."""
+        self._record_beyond_plan(
+            conversation if conversation is not None else static(query, response)
+        )
 
-    def _record_planned(self, conversation: Conversation) -> None:
-        if self._sent >= len(self._live):
-            # The Profiler sent more than it was given, which the library does not do. Recording it
-            # as beyond the plan keeps the evidence and keeps the denominator honest.
-            self._record_beyond_plan(conversation)
-            return
-        unit = self._live[self._sent]
-        self._sent += 1
+    def record(
+        self,
+        unit: WorkUnit,
+        query: str,
+        response: TargetResponse,
+        conversation: Conversation | None = None,
+    ) -> None:
+        conversation = conversation if conversation is not None else static(query, response)
         if conversation.final.failed:
             # The cursor advanced -- the Profiler counted this probe -- but nothing closes: the unit
             # is marked, not written, and the record of what went wrong is the marker's body. A
@@ -134,15 +89,13 @@ class Recorder:
 
     def _record_beyond_plan(self, conversation: Conversation) -> None:
         attack_id = hashlib.sha256(
-            json.dumps(
-                {"phase": self.phase, "query": conversation.opening}, sort_keys=True
-            ).encode()
+            json.dumps({"phase": EXPLOIT, "query": conversation.opening}, sort_keys=True).encode()
         ).hexdigest()[:_IDENTITY_CHARS]
         self.beyond_plan += 1
         self._write(
             attack_id=attack_id,
             replica_idx=0,
-            probe_id=f"{self.phase}-generated",
+            probe_id=f"{EXPLOIT}-generated",
             conversation=conversation,
             labels=self._labels(conversation),
         )
@@ -170,7 +123,7 @@ class Recorder:
             ended=conversation.ended,
         )
 
-    def _mark_failed(self, unit: WorkUnit, response: Any) -> None:
+    def _mark_failed(self, unit: WorkUnit, response: TargetResponse) -> None:
         """The unit's failure marker, carrying the record. Idempotent across attempts: an earlier
         attempt's marker says the same thing, and the store is the record."""
         failure = failure_of(response)

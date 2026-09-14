@@ -150,9 +150,7 @@ def planned_deliveries(
 ) -> list[PlannedDelivery]:
     """How each live unit is delivered, in the order the units will reach the target.
 
-    Built over the same list the recorder is built over, because both index it by position: the
-    door reads the k-th delivery for the k-th live exchange, and the recorder writes the k-th
-    conversation under the k-th live unit.
+    The caller binds each delivery to its unit before profiling begins.
 
     Raises:
         ValueError: A conducted strategy attacks nothing -- a control -- so there is no objective to

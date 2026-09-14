@@ -7,9 +7,9 @@ is given, against the base the run declared, and reports what it could not build
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
 
 from gaussia.schemas.roastme import Probe
+from langchain_core.language_models.chat_models import BaseChatModel
 
 from redteam_catalogue import assets
 from redteam_catalogue.contract import validation_contract
@@ -55,7 +55,7 @@ def generate_all(
     request: GenerationRequest,
     kb: KnowledgeBase,
     *,
-    model: Any | None = None,
+    model: BaseChatModel | None = None,
 ) -> Generated:
     """Generate from every catalogue the run named, against the base the run declared.
 
@@ -142,35 +142,3 @@ def no_base() -> KnowledgeBase:
     ones that cannot are set aside and reported.
     """
     return MemoryKnowledgeBase([])
-
-
-def generator_for(spec: Any, resolver: Any) -> Any | None:
-    """The generator the run declared, built through the resolver, or none.
-
-    None is legal and common: it is only needed by a construction that writes premises with a
-    model, and a catalogue naming one without it is refused by name at build time.
-
-    The credential comes from the resolver and never from the environment.
-    """
-    if spec is None:
-        return None
-    from redteam_judges.models import build_chat_model
-
-    credential = resolver.resolve(spec.secret_ref) if spec.secret_ref else None
-    return build_chat_model(spec, api_key=credential)
-
-
-def brain_registry(settings: Any, resolver: Any) -> Any:
-    """The registry client, with credentials resolved from the reference the settings name.
-
-    The settings carry a `secret_ref` and never a credential: a frozen, auditable artifact holding
-    a live token is a token with an audit trail pointing at it.
-    """
-    from redteam_knowledge.registry import DigestAwareRegistry
-
-    credentials: tuple[str, str] | None = None
-    if settings.brain_registry_secret_ref:
-        raw = resolver.resolve(settings.brain_registry_secret_ref)
-        username, _, password = raw.partition(":")
-        credentials = (username, password)
-    return DigestAwareRegistry(insecure=settings.brain_registry_insecure, credentials=credentials)

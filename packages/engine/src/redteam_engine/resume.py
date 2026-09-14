@@ -22,7 +22,6 @@ import json
 from collections.abc import Iterable, Sequence
 from typing import TYPE_CHECKING
 
-from gaussia.core.target_assistant import TargetAssistant
 from gaussia.schemas.roastme import TargetResponse
 
 from redteam_contracts.trace import Trace
@@ -82,52 +81,8 @@ def recorded_responses(store: ObjectStore, run_id: str, closed: Iterable[WorkUni
 
 
 def live_units(units: Sequence[WorkUnit], recorded: Recorded) -> list[WorkUnit]:
-    """The units `ResumingTarget` will send to the assistant, in the order it will send them.
-
-    Every unit of the plan with no recorded answer -- which is more than the pending ones: a unit
-    marked failed-without-remedy has no trace to replay from, so it goes live too. This is the list
-    the recorder has to be built over. Built over the pending units alone, the marked unit's answer
-    would land under the next unit's key, with the next unit's probe id, and the last pending answer
-    would fall beyond the plan.
-    """
+    """Units without completed traces, including those with failure markers."""
     return [unit for unit in units if (unit.attack_id, unit.replica_idx) not in recorded]
-
-
-class ResumingTarget(TargetAssistant):  # type: ignore[misc]  # gaussia ships no stubs
-    """The plan's units in order: closed ones answered from the store, the rest by the governed
-    target.
-
-    Sits **outside** `GovernedTarget`, on purpose. A replayed exchange is not a conversation with
-    the assistant: it must not be charged to the budget, must not wait on the rate gate, and must
-    not be recorded again. The recorder behind the governed target maps the k-th live exchange to
-    the k-th of `live_units(units, recorded)`, and that holds exactly because those are the units
-    that reach it, in plan order.
-
-    Positional, like the recorder and for the same reason: the Profiler sends one query per probe in
-    the order it was handed them. Anything sent past the plan's length is the search's, and goes
-    live.
-    """
-
-    def __init__(
-        self, units: Sequence[WorkUnit], recorded: Recorded, live: TargetAssistant
-    ) -> None:
-        self._units = list(units)
-        self._recorded = recorded
-        self._live = live
-        self._sent = 0
-        self.replayed = 0
-        """Exchanges answered from the store. Provenance: how much of the profile this attempt paid
-        the judge for and not the assistant."""
-
-    def send(self, query: str, session_id: str | None = None) -> TargetResponse:
-        if self._sent < len(self._units):
-            unit = self._units[self._sent]
-            self._sent += 1
-            recorded = self._recorded.get((unit.attack_id, unit.replica_idx))
-            if recorded is not None:
-                self.replayed += 1
-                return recorded
-        return self._live.send(query, session_id)
 
 
 def closed_conduction(store: ObjectStore, run_id: str) -> dict[str, str]:

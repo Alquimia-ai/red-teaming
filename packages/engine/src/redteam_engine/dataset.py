@@ -1,42 +1,21 @@
-"""Building the attack dataset from what conduction produced.
-
-The deliverable, assembled with gaussia's own `to_dataset` (the Profiler's half) and
-`report_to_dataset` (the Exploiter's), then widened with the one thing gaussia does not carry: the
-per-replica split. Nothing of gaussia's records is re-implemented -- every turn keeps gaussia's
-`RoastBatch`, with the record on it.
-
-**One session per replica.** `to_dataset` keys outcomes by `probe_id`, so N replicas of one probe in
-one call collapse to the last. The Profiler is handed every unit of the plan in order -- the same
-probe once per replica, closed ones replayed from their traces -- so grouping by replica index and
-building a session each keeps every replica, and a reader aggregates per session, which is what
-returns replica-level results raw.
-
-**Outcomes are matched to units by position, never by `probe_id`.** Every replica of a probe shares
-the id, so keying on it collapses N graded outcomes into the last one: N identical sessions, and a
-replica variance of zero by construction. gaussia's `Profiler.profile` is one `send` per probe, in
-the order it was handed them, with no retry, skip or reorder -- so `outcomes[i]` grades `probes[i]`,
-and that is the same contract the recorder maps traces by.
-
-**The session type narrows `conversation`.** gaussia's `Dataset` declares `list[Batch]`, so a
-session read back from JSON would validate each turn as a plain `Batch` and drop the record.
-`RoastDataset` declares `list[RoastBatch]`, and the record survives the round trip through the
-store.
-"""
+"""Assemble replica sessions from explicitly identified graded outcomes."""
 
 from __future__ import annotations
 
 from collections import defaultdict
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from gaussia.generators.roastme.dataset import report_to_dataset, to_dataset
 from gaussia.schemas.common import Dataset
 from gaussia.schemas.roastme import RoastBatch
 
-if TYPE_CHECKING:
-    from gaussia.schemas.roastme import FailureReport, GradedOutcome, Probe, ProfilerResult
+from redteam_engine.outcomes import UnitOutcome
 
-    from redteam_contracts.plan import WorkUnit
+if TYPE_CHECKING:
+    from gaussia.schemas.roastme import FailureReport, GradedOutcome, Probe
+
 
 EXPLOIT_SESSION = "exploit"
 """The suffix the search's session gets: `{run_id}:exploit`. The one place that names it; the resume
@@ -62,9 +41,7 @@ class RoastSessions:
 
 
 def roast_dataset(
-    units: list[WorkUnit],
-    probes: list[Probe],
-    result: ProfilerResult,
+    outcomes: Sequence[UnitOutcome],
     report: FailureReport | None,
     *,
     run_id: str,
@@ -72,23 +49,18 @@ def roast_dataset(
     context: str,
     language: str,
 ) -> RoastSessions:
-    """The attack dataset: one session per replica, plus the search's session when there was one.
-
-    Args:
-        units: Every unit of the plan, in the order the Profiler was handed them -- closed ones
-            replayed, pending ones live. `probes[i]`, `outcomes[i]` and `units[i]` are the same
-            exchange; that is how the recorder mapped them, and it is how the replica of each turn
-            is known.
-        probes: One per unit, in that order.
-        result: The Profiler's output; `result.outcomes[i]` grades `probes[i]`.
-        report: The Exploiter's, or None when the search did not run.
-        assistant_id: The assistant the run attacked, as the connector names it.
-        context: One phrase for what the assistant is; the run's declared domain.
-        language: The language the probes are written in, as the run declared it.
-    """
     by_replica: dict[int, list[tuple[Probe, GradedOutcome]]] = defaultdict(list)
-    for unit, probe, outcome in zip(units, probes, result.outcomes, strict=True):
-        by_replica[unit.replica_idx].append((probe, outcome))
+    seen: set[tuple[str, int]] = set()
+    for item in outcomes:
+        key = item.unit.attack_id, item.unit.replica_idx
+        if (
+            key in seen
+            or item.unit.probe_id != item.probe.id
+            or item.outcome.probe_id != item.probe.id
+        ):
+            raise ValueError("duplicate or inconsistent work-unit outcome")
+        seen.add(key)
+        by_replica[item.unit.replica_idx].append((item.probe, item.outcome))
 
     sessions: list[RoastDataset] = []
     for replica in sorted(by_replica):
@@ -115,7 +87,7 @@ def roast_dataset(
     return RoastSessions(sessions=sessions)
 
 
-def as_roast(base: Any) -> RoastDataset:
+def as_roast(base: Dataset) -> RoastDataset:
     """gaussia's `Dataset` as a `RoastDataset`, every turn keeping gaussia's record and gaussia's
     `qa_id`.
 

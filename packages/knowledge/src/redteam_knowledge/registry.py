@@ -21,6 +21,10 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from boltzmann.distribution.registry import RegistryClient
+
+__all__ = ["DigestAwareRegistry", "RegistryClient", "reference_for"]
+
 if TYPE_CHECKING:
     from boltzmann import BlockStore, OciDigest
     from boltzmann.distribution import BrainManifest

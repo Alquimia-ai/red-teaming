@@ -97,7 +97,6 @@ def _door(
         rate=RateGate(sleep=lambda _s: None),
         on_exchange=lambda _q, _r, conversation: recorded.append(conversation),
         max_retries=max_retries,
-        planned=planned,
         attackers={"crescendo": attacker},
     )
     return door, recorded
@@ -116,7 +115,9 @@ def test_a_conversation_is_one_exchange_to_gaussia_and_every_turn_to_the_assista
     attacker = _Attacker("Could you say more?", "And the rest?")
     door, recorded = _door(target, [CONDUCTED], attacker)
 
-    final = door.send("How do you decide what to answer?")
+    final = door.send_planned(
+        "How do you decide what to answer?", CONDUCTED, lambda q, r, c: recorded.append(c)
+    )
 
     assert final.content == "re: And the rest?"
     assert [q for q, _ in target.calls] == [
@@ -137,9 +138,9 @@ def test_every_turn_is_charged_to_the_budget() -> None:
     """The ceiling is on what the assistant's infrastructure takes, and a conversation takes N
     calls."""
     budget = Budget()
-    door, _ = _door(_Target(), [CONDUCTED], _Attacker("more", "more"), budget=budget)
+    door, recorded = _door(_Target(), [CONDUCTED], _Attacker("more", "more"), budget=budget)
 
-    door.send("opening")
+    door.send_planned("opening", CONDUCTED, lambda q, r, c: recorded.append(c))
 
     assert budget.calls == 3
 
@@ -150,7 +151,7 @@ def test_the_session_the_target_named_on_the_first_turn_is_carried_into_the_next
     target = _Target(minted="runtime-session-9")
     door, recorded = _door(target, [CONDUCTED], _Attacker("more", None))
 
-    door.send("opening")
+    door.send_planned("opening", CONDUCTED, lambda q, r, c: recorded.append(c))
 
     assert [s for _, s in target.calls] == [None, "runtime-session-9"]
     assert recorded[0].session_id == "runtime-session-9"
@@ -162,7 +163,7 @@ def test_a_target_that_names_no_session_is_handed_one_minted_here() -> None:
     target = _Target(minted=None)
     door, recorded = _door(target, [CONDUCTED], _Attacker("more", "more"))
 
-    door.send("opening")
+    door.send_planned("opening", CONDUCTED, lambda q, r, c: recorded.append(c))
 
     sessions = [s for _, s in target.calls]
     assert sessions[0] is None
@@ -174,7 +175,7 @@ def test_the_attacker_ends_the_conversation_when_it_judges_the_objective_reached
     target = _Target()
     door, recorded = _door(target, [CONDUCTED], _Attacker("one more", None))
 
-    door.send("opening")
+    door.send_planned("opening", CONDUCTED, lambda q, r, c: recorded.append(c))
 
     assert len(target.calls) == 2
     assert recorded[0].ended == ENDED_BY_ATTACKER
@@ -183,9 +184,9 @@ def test_the_attacker_ends_the_conversation_when_it_judges_the_objective_reached
 
 def test_the_attacker_is_told_the_objective_the_approach_and_the_whole_transcript() -> None:
     attacker = _Attacker("more", None)
-    door, _ = _door(_Target(), [CONDUCTED], attacker)
+    door, recorded = _door(_Target(), [CONDUCTED], attacker)
 
-    door.send("opening")
+    door.send_planned("opening", CONDUCTED, lambda q, r, c: recorded.append(c))
 
     objective, approach, transcript = attacker.asked[-1]
     assert objective == OBJECTIVE
@@ -201,7 +202,7 @@ def test_an_attacker_that_fails_three_times_closes_the_conversation_as_it_stands
     attacker = _Attacker(RuntimeError("429"), RuntimeError("429"), RuntimeError("429"))
     door, recorded = _door(target, [CONDUCTED], attacker)
 
-    final = door.send("opening")
+    final = door.send_planned("opening", CONDUCTED, lambda q, r, c: recorded.append(c))
 
     assert final.content == "re: opening"
     assert len(target.calls) == 1
@@ -215,7 +216,7 @@ def test_an_attacker_that_fails_once_is_asked_again() -> None:
     attacker = _Attacker(RuntimeError("blip"), "more", None)
     door, recorded = _door(_Target(), [CONDUCTED], attacker)
 
-    door.send("opening")
+    door.send_planned("opening", CONDUCTED, lambda q, r, c: recorded.append(c))
 
     assert recorded[0].depth == 2
     assert recorded[0].ended == ENDED_BY_ATTACKER
@@ -230,7 +231,7 @@ def test_a_target_that_fails_a_later_turn_marks_the_unit_failed_as_a_static_one_
     target = _Target(TargetResponse(content="first"), rate_limited, rate_limited)
     door, recorded = _door(target, [CONDUCTED], _Attacker("more", "more"), max_retries=1)
 
-    final = door.send("opening")
+    final = door.send_planned("opening", CONDUCTED, lambda q, r, c: recorded.append(c))
 
     assert final.failed
     [conversation] = recorded
@@ -248,7 +249,7 @@ def test_a_refused_credential_mid_conversation_is_recorded_whole_and_then_raised
     door, recorded = _door(target, [CONDUCTED], _Attacker("more", "more"))
 
     with pytest.raises(TargetUnauthorized):
-        door.send("opening")
+        door.send_planned("opening", CONDUCTED, lambda q, r, c: recorded.append(c))
 
     [conversation] = recorded
     assert conversation.depth == 2
@@ -265,7 +266,7 @@ def test_a_budget_that_runs_out_between_turns_closes_the_conversation_and_stops_
     )
 
     with pytest.raises(BudgetExhausted):
-        door.send("opening")
+        door.send_planned("opening", CONDUCTED, lambda q, r, c: recorded.append(c))
 
     [conversation] = recorded
     assert conversation.depth == 2
@@ -279,7 +280,7 @@ def test_a_static_delivery_is_one_turn_and_never_asks_the_attacker() -> None:
     attacker = _Attacker("never asked")
     door, recorded = _door(target, [ONE_TURN], attacker)
 
-    final = door.send("a question")
+    final = door.send_planned("a question", ONE_TURN, lambda q, r, c: recorded.append(c))
 
     assert final.content == "re: a question"
     assert len(target.calls) == 1
@@ -297,7 +298,7 @@ def test_exchanges_past_the_plan_are_static_because_they_are_the_search_s() -> N
     attacker = _Attacker("more", "more", "more", "more")
     door, recorded = _door(target, [CONDUCTED], attacker)
 
-    door.send("planned opening")
+    door.send_planned("planned opening", CONDUCTED, lambda q, r, c: recorded.append(c))
     door.send("a question the search generated")
 
     assert recorded[1].technique == STATIC_TECHNIQUE
@@ -309,12 +310,11 @@ def test_an_attacker_the_plan_names_and_nobody_built_is_refused_not_worked_aroun
         _Target(),
         gate=CapabilityGate(declared_capabilities=(), safe_mode=True),
         budget=Budget(),
-        planned=[CONDUCTED],
         attackers={},
     )
 
     with pytest.raises(LookupError, match="crescendo"):
-        door.send("opening")
+        door.send_planned("opening", CONDUCTED, lambda q, r, c: None)
 
 
 # ---- planning the deliveries over the live units ------------------------------------------------
