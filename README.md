@@ -31,6 +31,13 @@ configuration, declared per run by role, served by vLLM on the appliance or by a
 ## Try it
 
 ```bash
+curl -fsSL https://raw.githubusercontent.com/Alquimia-ai/red-teaming/main/install.sh | sh
+redteam --version                                    # and later: redteam update
+```
+
+Or from this checkout, where `uv run redteam` is the same command line:
+
+```bash
 uv sync --all-packages
 uv run redteam init                                  # .redteam/ here
 uv run redteam local up --build                      # minio, api, seed, receiver, mock assistant
@@ -68,4 +75,6 @@ uv run pytest -m live tests/live                             # a real assistant,
 ```
 
 Images are published as packages of this repository (`ghcr.io/alquimia-ai/red-teaming-{api,runner}`);
-the command line ships as a single file per platform on every release.
+the command line ships as a single file per platform on every release, installed with `install.sh`
+and kept current with `redteam update`. `develop` builds all three and publishes the images;
+`main` is where release-please tags them. See [`docs/release.md`](docs/release.md).

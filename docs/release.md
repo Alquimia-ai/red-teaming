@@ -3,7 +3,7 @@
 Three things ship, each on its own cadence: the API image, the runner image, and the command line.
 `develop` is where they integrate; `main` is where they are released.
 
-## develop: images on every push
+## develop: images under a moving tag, the command line proved and kept
 
 `.github/workflows/images-develop.yml` builds `ghcr.io/alquimia-ai/red-teaming-api` and
 `ghcr.io/alquimia-ai/red-teaming-runner` for `linux/amd64` and `linux/arm64` on every push to
@@ -17,6 +17,20 @@ image carries `org.opencontainers.image.source` pointing here, which is what fil
 repository's packages. A package inherits the repository's visibility on its first push; a private
 repository's images need a pull secret on the cluster (`docs/deploy/`), or the package made public
 from its settings page.
+
+The command line follows the same rule with the opposite conclusion: `.github/workflows/cli-develop.yml`
+builds it for **every platform a release publishes** on every push to `develop`, runs it, and
+installs it with `install.sh` -- and publishes nothing. A zipapp is a file somebody downloads and
+runs; there is no `develop` tag for one, so what `develop` buys is the certainty that the release
+step is not the first time anybody built it. Each build is kept as a workflow artifact for seven
+days. A pull request builds the same way on one platform (`ci.yml`), which is what keeps the loop
+short.
+
+All three go through one reusable workflow each -- `publish-image.yml` for an image,
+`build-cli.yml` for the command line -- so `develop` and a release cannot drift on how a thing is
+built. The only difference between the two callers is that the release hands `build-cli.yml` a tag
+to attach the files to, and a guard (`tests/guards/test_cli_distribution.py`) refuses any other
+caller that does.
 
 ## main: release-please
 
@@ -45,19 +59,56 @@ then publishes what the component ships:
 
 - **api**, **runner**: the image under its version (`ghcr.io/alquimia-ai/red-teaming-api:0.2.0`)
   and under `latest`, for `linux/amd64` and `linux/arm64`.
-- **cli**: one zipapp per platform, attached to the release --
+- **cli**: one zipapp per platform, each with its `.sha256` beside it, attached to the release --
   `redteam-linux-x86_64.pyz`, `redteam-linux-aarch64.pyz`, `redteam-darwin-arm64.pyz`,
   `redteam-darwin-x86_64.pyz`. Each runs with the platform's own Python 3.12:
-  `chmod +x redteam-darwin-arm64.pyz && ./redteam-darwin-arm64.pyz --help`.
+  `chmod +x redteam-darwin-arm64.pyz && ./redteam-darwin-arm64.pyz --version`. This release is
+  what `install.sh` and `redteam update` download; nothing else publishes a command line.
 
 Both workflows build through the same reusable one in this repository
 (`.github/workflows/publish-image.yml`), so `develop` and a release cannot drift on how an image is
 built: same Dockerfile, same platforms, same labels, a build cache per app.
 
+## Installing the command line
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Alquimia-ai/red-teaming/main/install.sh | sh
+redteam --version
+redteam update                 # the same thing, from inside the command line
+```
+
+The script is served from `main` and carries no version of its own: it resolves the newest `cli-v*`
+tag -- never the repository's newest release, which usually belongs to an image -- downloads the
+asset this platform's `uname` resolves to, checks it against the digest the release published, and
+installs it as one executable file in `$HOME/.local/bin` (`--dir` elsewhere). `--version cli-v0.2.0`
+pins one. A private repository needs `REDTEAM_GITHUB_TOKEN` in the environment; the same variable is
+what `redteam update` reads.
+
+| Want | Command |
+|---|---|
+| install, or reinstall | `curl -fsSL .../install.sh \| sh` |
+| a particular release | `curl -fsSL .../install.sh \| sh -s -- --version cli-v0.2.0` |
+| somewhere else | `curl -fsSL .../install.sh \| sh -s -- --dir /usr/local/bin` |
+| what is available | `redteam update --check` |
+| take it | `redteam update` |
+| go back | `redteam update --tag cli-v0.1.0 --force` |
+| a build from this checkout | `scripts/build_pyz.sh dist && sh install.sh --from dist/redteam-*.pyz` |
+
+`redteam update` replaces the file it is running from, in place, and only after the download hashes
+to what the release published: it writes the new file beside the old one and renames it over it, so
+an update interrupted half way through leaves the command line it had. It refuses, with what to run
+instead, when the command line is not one file -- a checkout or a wheel is updated by whatever
+installed it.
+
+Three pieces have to agree on the names for any of this to work: the installer in shell, the
+command line in Python, and the build matrix in YAML. They are held together by
+`tests/guards/test_cli_distribution.py`, which runs the installer for every platform and compares
+what it resolves with what `redteam update` would download.
+
 ## Promoting
 
 ```
-develop ──(pull request)──▶ main ──(release-please opens release PRs)──▶ merge ──▶ tags, images, zipapp
+develop ──(pull request)──▶ main ──(release-please opens release PRs)──▶ merge ──▶ tags, images, zipapps
 ```
 
 A promotion is an ordinary pull request from `develop` to `main`, reviewed like any other. The
@@ -73,12 +124,15 @@ minor.
 ## Locally
 
 ```bash
-scripts/build_pyz.sh dist          # dist/redteam-<os>-<arch>.pyz, from this checkout
-dist/redteam-*.pyz --help
+scripts/build_pyz.sh dist                          # dist/redteam-<os>-<arch>.pyz, from this checkout
+dist/redteam-*.pyz --version
+sh install.sh --from dist/redteam-*.pyz --dir ~/.local/bin   # install that one
+sh install.sh --print-asset                        # which file this machine would download
 ```
 
 The script builds the command line and the contracts package as wheels first, because the command
-line depends on a workspace member no index serves, and hands both to `shiv`.
+line depends on a workspace member no index serves, and hands both to `shiv`. It is the same script
+CI runs, and the only place a zipapp is built.
 
 ## Initial bug-fix deliveries
 
