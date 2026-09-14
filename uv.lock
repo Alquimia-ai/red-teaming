@@ -1342,7 +1342,7 @@ wheels = [
 
 [[package]]
 name = "red-teaming-api"
-version = "0.0.0"
+version = "0.1.1"
 source = { editable = "apps/api" }
 dependencies = [
     { name = "fastapi" },
@@ -1396,7 +1396,7 @@ requires-dist = [
 
 [[package]]
 name = "red-teaming-cli"
-version = "0.0.0"
+version = "0.1.0"
 source = { editable = "apps/cli" }
 dependencies = [
     { name = "httpx" },
@@ -1559,7 +1559,7 @@ requires-dist = [
 
 [[package]]
 name = "red-teaming-runner"
-version = "0.0.0"
+version = "0.1.0"
 source = { editable = "apps/runner" }
 dependencies = [
     { name = "red-teaming-catalogue" },
