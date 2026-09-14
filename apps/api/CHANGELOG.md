@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.2](https://github.com/Alquimia-ai/red-teaming/compare/api-v0.1.1...api-v0.1.2) (2026-09-14)
+
+
+### Code Refactoring
+
+* **repo:** use runtime type imports and concise documentation ([1116334](https://github.com/Alquimia-ai/red-teaming/commit/1116334c493ea55da7fec7a45a57c285b6f613ed))
+
 ## [0.1.1](https://github.com/Alquimia-ai/red-teaming/compare/api-v0.1.0...api-v0.1.1) (2026-09-11)
 
 ### Bug Fixes
