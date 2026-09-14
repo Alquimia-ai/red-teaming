@@ -1,24 +1,16 @@
-"""The grader for the principles of the behavioural contract.
+"""Bind the declared judge model or an explicitly reported deterministic stand-in.
 
-gaussia's `Grader` obligation is to "estimate one principle's violation in [0, 1], with its
-evidence". `LogprobGrader` ships that, so nothing here re-implements grading. What this module owns
-is the *verdict surface*: which words the judge is asked to answer with, how much room it gets to
-reason before answering, and the refusal to accept a silently degraded estimator.
-
-The judge model arrives already built. This module names no model and no provider.
-"""
+Control grading uses logprobs rather than silently switching to repeated sampling."""
 
 from __future__ import annotations
-
-from typing import TYPE_CHECKING, Any
 
 from gaussia.core.grader import Grader
 from gaussia.graders.logprob import LogprobGrader
 from gaussia.schemas.roastme import GraderConfig
 from langchain_core.language_models.chat_models import BaseChatModel
 
-if TYPE_CHECKING:
-    from redteam_contracts.serving import ServingPath
+from redteam_contracts.run_spec import ModelSpec
+from redteam_contracts.serving import ServingPath
 
 # `VIOLATED` is not one token. Against a common tokenizer the answer arrives as `VI`, so a
 # vocabulary built on it never matches the first token and every verdict reads wrong. `YES`/`NO`
@@ -78,7 +70,7 @@ def build_grader(model: BaseChatModel, **kwargs: object) -> LogprobGrader:
     return LogprobGrader(model, verdict_config(**kwargs))  # type: ignore[arg-type]
 
 
-def grader_for(spec: Any, api_key: str | None) -> tuple[Grader, ServingPath, str | None]:
+def grader_for(spec: ModelSpec, api_key: str | None) -> tuple[Grader, ServingPath, str | None]:
     """The instrument a `ModelSpec` declares, and what provenance will say about it.
 
     One rule for every grader the run builds, so none can drift: a spec naming a provider builds

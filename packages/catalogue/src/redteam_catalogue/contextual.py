@@ -22,18 +22,15 @@ known while there is still time to say so.
 from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
-from typing import TYPE_CHECKING
 
 from gaussia.core.transform import Transform
 from gaussia.generators.roastme.probes.verification import collision
 from gaussia.llm.structured import ResponseFormatOutput, StructuredOutputStrategy, parsed
+from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel, Field
 
-if TYPE_CHECKING:
-    from langchain_core.language_models.chat_models import BaseChatModel
-
-    from redteam_contracts.run_spec import ProbeContext
+from redteam_contracts.run_spec import ProbeContext
 
 CONTEXTUAL_SIBLING = "contextual_sibling"
 

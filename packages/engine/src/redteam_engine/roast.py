@@ -1,26 +1,11 @@
-"""Building the Profiler and the Exploiter.
+"""Build Gaussia's profiler and inference-only AttributeIterationSearch exploiter.
 
-Everything here is gaussia's; what this module owns is which pieces get chosen. Two of those choices
-are decisions rather than defaults, so they live in one place where they can be read:
-
-- The search is always `AttributeIterationSearch`. The Exploiter runs in inference mode, never in
-  training mode. The other enforcement is that the training extra is installed in no image, so the
-  update step cannot be imported -- the guarantee is "cannot train", not "cannot import", because
-  `PolicyGradientSearch` itself imports fine without a GPU.
-- `require_logprobs` is on, in the grader the judges package builds. A provider with no usable
-  logprobs would send the grader to sampling: five times the cost per grade, temperature forced to
-  1.0, and scores quantised to multiples of 1/k. A run that cannot be graded the way it was
-  configured should fail and say so.
-
-The cost of the first choice is worth stating rather than burying: the training-free search has no
-published result behind it. It is the default for needing no GPU and costing only target calls, not
-for being the procedure the paper evaluated.
-"""
+Control grading requires logprobs; silently falling back to repeated sampling would change cost
+and score semantics. Training is neither selected nor installed in the shipped images."""
 
 from __future__ import annotations
 
-from typing import Any
-
+from gaussia.core.embedder import Embedder
 from gaussia.core.grader import Grader
 from gaussia.core.target_assistant import TargetAssistant
 from gaussia.generators.roastme.exploiter import Exploiter
@@ -30,6 +15,7 @@ from gaussia.generators.roastme.searches.on_profile import JudgeOnProfileFilter
 from gaussia.generators.roastme.searches.query_generation import PromptedQueryGenerator
 from gaussia.generators.roastme.searches.realism import EmbeddingRealismEstimator
 from gaussia.schemas.roastme import BehavioralContract, ExploiterConfig
+from langchain_core.language_models.chat_models import BaseChatModel
 
 MAX_ATTRIBUTES = 3
 QUERY_ATTEMPTS = 3
@@ -48,8 +34,8 @@ def build_exploiter(
     contract: BehavioralContract,
     target: TargetAssistant,
     *,
-    generator: Any,
-    embedder: Any,
+    generator: BaseChatModel,
+    embedder: Embedder,
     realism_prior: list[str],
     config: ExploiterConfig,
     max_attributes: int = MAX_ATTRIBUTES,

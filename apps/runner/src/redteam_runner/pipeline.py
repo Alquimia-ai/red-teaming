@@ -1,20 +1,7 @@
-"""The shape of a run, seen from the runner.
+"""Run the frozen specification through generation, conduction and manifest delivery.
 
-    spec.json (frozen by the API)   -> the request, read once
-    probes.json  -> blobs/{digest}  -> generation, in this process, or the pinned set
-    expand -> difference            -> the plan, and what of it the store already holds
-    attack                          -> traces/..., profile.json, exploit.json, dataset.json
-    manifest.json                   -> the run closed; the webhook says where to read
-
-If the process dies anywhere, resumption needs no new mechanism: `probes.json`, the traces, the
-control artifacts and the dataset are keys in the store, so their existence is the record. The next
-launch of the same run id reads what is there and does the rest.
-
-**A failure is not a closed run.** An exception anywhere after the attempt began -- generation
-refused as much as the attack -- writes a failure record under `runs/{id}/failures/` and exits
-non-zero; it never writes `manifest.json`, whose existence means COMPLETE to every reader of the
-store. The platform's retry policy relaunches, and the relaunch resumes from the difference.
-"""
+Reuse pinned probes and completed traces. A failure writes an attempt record and exits nonzero;
+only a successfully assembled result writes the completion manifest."""
 
 from __future__ import annotations
 
@@ -26,7 +13,9 @@ from pathlib import Path
 from typing import Any
 
 import httpx
+from gaussia.core.target_assistant import TargetAssistant
 
+from redteam_contracts.kb import KnowledgeBase
 from redteam_contracts.manifest import RunPhase
 from redteam_contracts.plan import PlannedProbe, expand
 from redteam_contracts.run_spec import RunSpec
@@ -34,10 +23,12 @@ from redteam_delivery import Delivery, deliver, idempotency_key
 from redteam_engine.assemble import begin_attempt, write_failure, write_manifest
 from redteam_engine.attack import attack
 from redteam_engine.call_journal import CallJournal
+from redteam_engine.planned import AttackerProtocol
 from redteam_probes.generate_run import generate_for
-from redteam_probes.generation import brain_registry, generator_for
 from redteam_probes.request import GenerationReport, GenerationRequest
+from redteam_runner.wiring import brain_registry, generator_for
 from redteam_secrets.resolver import SecretResolver, build_resolver
+from redteam_settings.config import Settings
 from redteam_store import layout, versioned
 from redteam_store.backends import build_store
 from redteam_store.interface import ObjectStore
@@ -64,13 +55,13 @@ class RunOutcome:
 def execute(
     run_id: str,
     *,
-    settings: Any,
+    settings: Settings,
     dry_run: bool = False,
     store: ObjectStore | None = None,
     resolver: SecretResolver | None = None,
-    target: Any = None,
-    attackers: Mapping[str, Any] | None = None,
-    knowledge_base: Any = None,
+    target: TargetAssistant | None = None,
+    attackers: Mapping[str, AttackerProtocol] | None = None,
+    knowledge_base: KnowledgeBase | None = None,
     webhook_client: httpx.Client | None = None,
 ) -> RunOutcome:
     """Run to completion, or report what it got to.
@@ -186,7 +177,7 @@ def execute(
     )
 
 
-def _resolver(settings: Any) -> SecretResolver:
+def _resolver(settings: Settings) -> SecretResolver:
     """How this run turns a `secret_ref` into a credential.
 
     The runner is the process that holds them: the target's key to reach the assistant, the judge's
@@ -200,7 +191,11 @@ def _resolver(settings: Any) -> SecretResolver:
 
 
 def _generate(
-    store: ObjectStore, spec: RunSpec, settings: Any, resolver: SecretResolver, knowledge_base: Any
+    store: ObjectStore,
+    spec: RunSpec,
+    settings: Settings,
+    resolver: SecretResolver,
+    knowledge_base: KnowledgeBase | None,
 ) -> GenerationReport:
     """The run's probe set: read back when `probes.json` pins it, generated in this process
     otherwise.

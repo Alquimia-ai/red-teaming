@@ -1,23 +1,11 @@
-"""Which store a deployment asked for, decided once.
+"""Select the requested store backend and verify conditional writes before serving.
 
-Every process that touches the store -- the API, the runner -- selects its backend here rather than
-branching on the enum itself. One copy of a selection is one place to add a backend and none to
-forget, and the conditional-write check every process must run before it serves is run here.
-
-**A backend the settings name and this build cannot serve is refused, loudly.** A selection that
-falls through to a default starts green and writes a client's evidence to whatever S3-shaped
-endpoint happens to be configured, which is worse than not starting: the operator reads the enum as
-the contract, and nothing says otherwise until somebody goes looking for objects that are not
-where they were meant to be.
-
-Takes the backend as a plain string rather than the settings enum, which is what keeps this package
-free of the settings package -- the same shape `redteam_secrets.build_resolver` has, and for the
-same reason.
-"""
+Unsupported backends fail explicitly. The store consumes connection fields through a protocol
+without depending on the deployment settings package."""
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Protocol
 
 from redteam_store.interface import ObjectStore
 
@@ -36,7 +24,22 @@ class StoreBackendUnavailable(RuntimeError):
     """
 
 
-def build_store(backend: str, settings: Any, *, verify: bool = True) -> ObjectStore:
+class S3Settings(Protocol):
+    """The connection values required by the S3 adapter."""
+
+    @property
+    def s3_bucket(self) -> str: ...
+    @property
+    def s3_endpoint(self) -> str | None: ...
+    @property
+    def s3_access_key(self) -> str | None: ...
+    @property
+    def s3_secret_key(self) -> str | None: ...
+    @property
+    def s3_region(self) -> str | None: ...
+
+
+def build_store(backend: str, settings: S3Settings, *, verify: bool = True) -> ObjectStore:
     """The store this deployment asked for, checked before it is used.
 
     Args:
@@ -63,7 +66,7 @@ def build_store(backend: str, settings: Any, *, verify: bool = True) -> ObjectSt
             endpoint_url=settings.s3_endpoint,
             access_key=settings.s3_access_key,
             secret_key=settings.s3_secret_key,
-            region=getattr(settings, "s3_region", None),
+            region=settings.s3_region,
         )
         if verify:
             # Before the first key is written: "this key exists" and "this unit closed" are one

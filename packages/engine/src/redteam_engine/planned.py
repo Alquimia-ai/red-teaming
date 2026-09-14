@@ -1,25 +1,8 @@
-"""Delivering a probe: one static turn, or a conversation an attacker steers.
+"""Deliver static probes or attacker-steered conversations as one exchange.
 
-A strategy declares what it says; the catalogue's delivery sidecar declares how it reaches the
-target. The plan's unit is one replica of one attack, and a trace is a list of turns. This module is
-what a unit becomes between those two -- a `Conversation`, one pair for a static delivery and
-several for a conducted one -- and the loop that conducts the several.
-
-**Where the loop lives decides everything, and it lives inside the governed door.** gaussia's
-Profiler calls `send` once per probe and grades what comes back; the recorder and the resuming
-target map the k-th exchange to the k-th unit. A conversation is N calls to the assistant and one
-exchange for all of them -- the shape a retry already has, and for the same reason: anything that
-surfaced N exchanges would shift every unit after it by one. So the door runs this loop, every turn
-is charged to the budget and paced like any other call, and gaussia grades the final answer: what
-the escalation obtained.
-
-**A conversation that stops early is still evidence.** The attacker judging it done and the bound
-being reached are the two ordinary ends. The attacker's provider failing three times, or the budget
-running out between turns, are the two others: the conversation closes as it stands, the trace says
-why (`ended`), and the manifest counts how many ended that way. Not marked failed -- the turns the
-assistant answered were paid for and are real -- and not fatal to the attempt, for the reason a
-judge that blips once should not lose a run.
-"""
+Every turn passes through the governed target budget and pacing. Gaussia grades the final answer;
+recording preserves all turns and the stopping reason. Planned delivery is supplied explicitly.
+An interrupted conversation retains its evidence before any fatal error propagates."""
 
 from __future__ import annotations
 
@@ -27,15 +10,13 @@ import secrets
 import time
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Protocol
+from typing import Any, Protocol
 
 from gaussia.schemas.roastme import TargetResponse
 
+from redteam_contracts.plan import WorkUnit
+from redteam_contracts.trace import TraceLabels
 from redteam_store.delivery import STATIC, Delivery, Objective
-
-if TYPE_CHECKING:
-    from redteam_contracts.plan import WorkUnit
-    from redteam_contracts.trace import TraceLabels
 
 STATIC_TECHNIQUE = "static"
 """The delivery every strategy has unless the sidecar says otherwise: the query is sent, the answer
@@ -92,7 +73,7 @@ class AttackerProtocol(Protocol):
     ) -> str | None: ...
 
 
-Exchange = Callable[[str, "str | None"], "tuple[TargetResponse | None, BaseException | None]"]
+Exchange = Callable[[str, str | None], tuple[TargetResponse | None, BaseException | None]]
 """One governed call to the target: the answer it gave after every retry the policy allowed, and the
 exception the caller has to raise once it has recorded what happened. `None, exc` is a call that
 never reached the target -- the budget ran out before the first attempt."""
@@ -150,9 +131,7 @@ def planned_deliveries(
 ) -> list[PlannedDelivery]:
     """How each live unit is delivered, in the order the units will reach the target.
 
-    Built over the same list the recorder is built over, because both index it by position: the
-    door reads the k-th delivery for the k-th live exchange, and the recorder writes the k-th
-    conversation under the k-th live unit.
+    The caller binds each delivery to its unit before profiling begins.
 
     Raises:
         ValueError: A conducted strategy attacks nothing -- a control -- so there is no objective to

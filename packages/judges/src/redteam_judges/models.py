@@ -1,37 +1,17 @@
-"""Building the chat model a run declared, and nothing about which one it should be.
+"""Build the chat model declared by a run, with resolved credentials and provider pacing.
 
-No model id, no provider URL and no embedder name lives in any package -- not as a module constant,
-not as a signature default, not through `setdefault`. This module is where that rule is kept honest.
-It resolves a **declared** provider to a builder, hands it what the spec says, and refuses when the
-spec says nothing rather than falling back on somebody's favourite.
-
-Providers are registered rather than imported at module scope, because none of them is a hard
-dependency: a grader takes a `BaseChatModel` and which library builds one is the deployment's
-choice. An install without the provider's extra still imports this module -- it simply cannot build
-that provider, and says which one it could not build.
-
-**The credential is passed in, not looked up.** Resolving a `secret_ref` is the secrets package's
-job, and keeping it out of here is what stops this package from depending on the secrets backend in
-every image that grades.
-
-**The rate limiter is built into the model, and that is the whole point.** One 429 on the first
-call makes the grader settle its estimator on "this provider has no usable logprobs" and *remember*
-the denial, so every later grade raises without calling. `max_retries` does not cover it. Pacing
-does -- and since every component receives its model already built, the pacing has to be attached
-here or it does not exist.
-"""
+No model id is defaulted. Pacing prevents transient rate limits from teaching the grader that a
+provider lacks logprobs. Optional provider libraries are loaded only when selected."""
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Protocol
+from typing import Any, Protocol
 
+from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.rate_limiters import BaseRateLimiter, InMemoryRateLimiter
 from pydantic import SecretStr
 
-if TYPE_CHECKING:
-    from langchain_core.language_models.chat_models import BaseChatModel
-
-    from redteam_contracts.run_spec import ModelSpec
+from redteam_contracts.run_spec import ModelSpec
 
 OPENROUTER = "openrouter"
 """A hosted router: one model id served by several upstreams, picked per request."""

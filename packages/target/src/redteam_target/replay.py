@@ -1,22 +1,14 @@
-"""Recorded answers, through the same interface a live assistant is reached through.
+"""Replay ConnectorSpec.options responses by query through the target interface.
 
-Not a separate mode -- an implementation of the same interface, which is what makes rehearsing a
-whole run offline and without credentials the same code path as a live one. The recordings travel in
-`ConnectorSpec.options["responses"]`, keyed by query; a query nobody recorded is reported as an
-empty answer, never invented.
-"""
+An unrecorded query returns an empty response. Offline runs use the same orchestration path."""
 
 from __future__ import annotations
-
-from typing import TYPE_CHECKING
 
 from gaussia.core.target_assistant import TargetAssistant
 from gaussia.schemas.roastme import TargetResponse
 
+from redteam_contracts.run_spec import ConnectorSpec
 from redteam_target.failures import empty_response, failed_response
-
-if TYPE_CHECKING:
-    from redteam_contracts.run_spec import ConnectorSpec
 
 REPLAY = "replay"
 

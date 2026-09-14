@@ -1,41 +1,23 @@
-"""Resuming a run: closed units are answered from the store, pending ones by the assistant.
+"""Read completed traces for replay and recover atomic conduction checkpoints.
 
-The plan's argument -- "the key exists" and "the unit completed" are the same statement -- says
-which units must not be executed again. It does not say what to do with them, and the naive answer
-is "nothing": the Profiler sees only the pending tail, so a resumed run profiles the tail, builds a
-dataset of the tail, under a manifest whose denominator counts the whole run. The traces hold the
-exchange but not the grade, because grading is gaussia's and happens inside `Profiler.profile`,
-which hands its outcomes back only at the end.
-
-So the whole plan is profiled on every attempt, and a closed unit is **replayed**: the answer the
-assistant already gave is returned to the Profiler as if it had just been given. gaussia is built
-for exactly this -- "replaying recorded responses is the same code as a live run rather than a
-separate mode" -- and the cost is honest: one judge call per replayed exchange and principle, and
-zero conversations with the assistant. The alternative, persisting each grade as it is produced,
-would reach into gaussia's private exchange and would still not cover a process that died inside
-`profile()`.
-"""
+Replay reuses the final agent response, including failure metadata. The profiler may regrade it,
+but no live target call is made. Dataset and exploit recovery retain their original provenance."""
 
 from __future__ import annotations
 
 import json
 from collections.abc import Iterable, Sequence
-from typing import TYPE_CHECKING
 
-from gaussia.core.target_assistant import TargetAssistant
 from gaussia.schemas.roastme import TargetResponse
 
+from redteam_contracts.plan import WorkUnit
 from redteam_contracts.trace import Trace
 from redteam_engine.checkpoints import Checkpoint, RecoveryIncomplete, put_same, read, save
 from redteam_engine.dataset import EXPLOIT_SESSION, RoastDataset
 from redteam_store import layout
 from redteam_store.codec import decode_trace, encode_json
-from redteam_store.interface import ObjectNotFound
+from redteam_store.interface import ObjectNotFound, ObjectStore
 from redteam_target.failures import raw_failure
-
-if TYPE_CHECKING:
-    from redteam_contracts.plan import WorkUnit
-    from redteam_store.interface import ObjectStore
 
 Recorded = dict[tuple[str, int], TargetResponse]
 """`(attack_id, replica_idx)` -> the answer the assistant gave, for every closed unit."""
@@ -82,52 +64,8 @@ def recorded_responses(store: ObjectStore, run_id: str, closed: Iterable[WorkUni
 
 
 def live_units(units: Sequence[WorkUnit], recorded: Recorded) -> list[WorkUnit]:
-    """The units `ResumingTarget` will send to the assistant, in the order it will send them.
-
-    Every unit of the plan with no recorded answer -- which is more than the pending ones: a unit
-    marked failed-without-remedy has no trace to replay from, so it goes live too. This is the list
-    the recorder has to be built over. Built over the pending units alone, the marked unit's answer
-    would land under the next unit's key, with the next unit's probe id, and the last pending answer
-    would fall beyond the plan.
-    """
+    """Units without completed traces, including those with failure markers."""
     return [unit for unit in units if (unit.attack_id, unit.replica_idx) not in recorded]
-
-
-class ResumingTarget(TargetAssistant):  # type: ignore[misc]  # gaussia ships no stubs
-    """The plan's units in order: closed ones answered from the store, the rest by the governed
-    target.
-
-    Sits **outside** `GovernedTarget`, on purpose. A replayed exchange is not a conversation with
-    the assistant: it must not be charged to the budget, must not wait on the rate gate, and must
-    not be recorded again. The recorder behind the governed target maps the k-th live exchange to
-    the k-th of `live_units(units, recorded)`, and that holds exactly because those are the units
-    that reach it, in plan order.
-
-    Positional, like the recorder and for the same reason: the Profiler sends one query per probe in
-    the order it was handed them. Anything sent past the plan's length is the search's, and goes
-    live.
-    """
-
-    def __init__(
-        self, units: Sequence[WorkUnit], recorded: Recorded, live: TargetAssistant
-    ) -> None:
-        self._units = list(units)
-        self._recorded = recorded
-        self._live = live
-        self._sent = 0
-        self.replayed = 0
-        """Exchanges answered from the store. Provenance: how much of the profile this attempt paid
-        the judge for and not the assistant."""
-
-    def send(self, query: str, session_id: str | None = None) -> TargetResponse:
-        if self._sent < len(self._units):
-            unit = self._units[self._sent]
-            self._sent += 1
-            recorded = self._recorded.get((unit.attack_id, unit.replica_idx))
-            if recorded is not None:
-                self.replayed += 1
-                return recorded
-        return self._live.send(query, session_id)
 
 
 def closed_conduction(store: ObjectStore, run_id: str) -> dict[str, str]:

@@ -1,15 +1,7 @@
-"""The exceptions a run dies with when the channel to the target is what failed.
+"""Map transport failure kinds to exceptions retaining the original failure record.
 
-One base, one subclass per kind that deserves its own name, and a registry from kind to class so
-raising is always `raise error_for(failure)` and never a chain of `if kind == ...`. A kind nobody
-registered an exception for is raised as the base class, which still carries the record.
-
-Why typed at all: the failure record an attempt leaves (`runs/{id}/failures/{attempt}.json`) could
-say `ProfileTooThin: 31 of 40 exchanges could not be graded`. True, and useless -- the reader would
-still have to open thirty-one traces to learn that every one of them was a 401. The record says
-`unauthorized` instead, with the status and what the target said, and the reader knows which
-credential to fix before relaunching.
-"""
+Unregistered kinds use the base exception. Typed failures let operators diagnose the channel
+without inspecting every ungraded trace."""
 
 from __future__ import annotations
 

@@ -1,15 +1,7 @@
-"""The checks a run passes before it is accepted, and why they are all cheap.
+"""Validate run configuration before freezing or launching it.
 
-None of them costs a conversation with the assistant. That is the design: everything expensive to be
-wrong about is settled before the first turn -- a catalogue nobody published, an attacker nobody
-bound, a construction with no generator to write it, a ceiling nothing enforces, a credential the
-process would have read off its own environment. Each is refused with the reason, with nothing
-frozen and nothing launched, and the message says what to change.
-
-Pure over its inputs. What has to be read from the store -- which catalogues exist, what they
-deliver through, what the run would generate -- is read by the wiring and handed in, so this module
-can be tested with data alone.
-"""
+Checks are pure over supplied inputs and never contact the target. Store-backed assets are
+resolved by the caller; invalid configuration must fail before a paid conversation begins."""
 
 from __future__ import annotations
 

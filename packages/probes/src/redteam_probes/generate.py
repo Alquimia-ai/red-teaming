@@ -25,9 +25,10 @@ import hashlib
 import json
 from collections.abc import Sequence
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
-from gaussia.schemas.roastme import Catalogue, EngineDeclaration, Probe
+from gaussia.schemas.roastme import BehavioralContract, Catalogue, EngineDeclaration, Probe
+from langchain_core.language_models.chat_models import BaseChatModel
 
 from redteam_catalogue.documents import require_groundable, to_documents
 from redteam_catalogue.engines import (
@@ -42,12 +43,7 @@ from redteam_catalogue.enumerator import BrainEntityEnumerator
 from redteam_catalogue.premises import unresolved as unresolved_of
 from redteam_catalogue.validate import validate
 from redteam_contracts.kb import KnowledgeBase
-
-if TYPE_CHECKING:
-    from gaussia.schemas.roastme import BehavioralContract
-    from langchain_core.language_models.chat_models import BaseChatModel
-
-    from redteam_contracts.run_spec import ProbeContext
+from redteam_contracts.run_spec import ProbeContext
 
 BLOCK_ID = "block_id"
 GAUSSIA_PROBE_ID = "gaussia_probe_id"

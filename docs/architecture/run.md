@@ -47,7 +47,7 @@ resumption and coverage at once.
 
 ## 5. The attack
 
-Every unit of the plan is handed to gaussia's Profiler in order, through two doors. `ResumingTarget`
+Every unit of the plan is handed to gaussia's Profiler through `PlanProfiler`. Its target adapter
 answers closed units from their traces -- the last agent turn, the one that was graded -- and
 sends the rest live. `GovernedTarget` is the live door: the capability gate before the first turn,
 every call charged to the budget and paced, transport failures acted on by kind (retry as the
@@ -116,3 +116,14 @@ and prior pins, even if current publications no longer accept that selection. Ex
 pins and other material changes return 409. New runs still pass the full gate; concurrent creation
 compares against whichever specification wins the conditional write. Repeating a completed run's
 request does not launch another runner; the explicit resume route keeps its existing 409 response.
+
+
+### Explicit profiling identity
+
+`PlanProfiler` owns the sequential Gaussia exchange cursor. It binds each planned unit's
+`(attack_id, replica_idx)` to its probe, delivery and recorded response. Completed responses
+bypass the live target; live conversations are recorded under the unit passed explicitly.
+Graded outcomes carry the same unit into dataset assembly, so replicas cannot collapse through
+probe-id lookup. Exploitation uses the ordinary governed target without a planned identity.
+The adapter checks exchange counts and observable ordering; Gaussia's sequential behavior for
+identical queries is covered by integration tests. See [ADR-012](../adr/012-explicit-work-identity-and-collaborator-contracts.md).

@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-
 import pytest
 
 from redteam_dispatch import AVAILABLE, DispatchBackendUnavailable, build_dispatcher
@@ -18,22 +16,17 @@ class _Resolver:
         return f"resolved-{ref}"
 
 
-@dataclass
-class _Settings:
-    runner_image: str = "red-teaming-runner:local"
-    docker_network: str | None = "red-teaming"
-    k8s_namespace: str = "attacks"
-    k8s_runner_secret: str = "runner-secrets"
-    k8s_runner_config_map: str | None = "runner-config"
-    k8s_store_secret: str | None = "store-creds"
-    k8s_image_pull_secret: str | None = "ghcr-pull"
-    k8s_service_account: str | None = "red-teaming-runner"
-    k8s_job_backoff_limit: int = 3
-    k8s_job_ttl_seconds: int = 600
-
-
 def test_each_backend_builds_its_dispatcher() -> None:
-    settings = _Settings()
+    settings = Settings(
+        runner_image="red-teaming-runner:local",
+        docker_network="red-teaming",
+        k8s_namespace="attacks",
+        k8s_runner_secret="runner-secrets",
+        k8s_store_secret="store-creds",
+        k8s_image_pull_secret="ghcr-pull",
+        k8s_job_backoff_limit=3,
+        k8s_job_ttl_seconds=600,
+    )
     resolver = _Resolver()
 
     local = build_dispatcher("local_subprocess", settings, resolver=resolver)
@@ -58,13 +51,6 @@ def test_the_settings_promise_exactly_what_this_build_serves() -> None:
 
 def test_a_backend_nothing_serves_is_refused_and_the_refusal_names_the_alternatives() -> None:
     with pytest.raises(DispatchBackendUnavailable) as refused:
-        build_dispatcher("cloudrun_job", _Settings(), resolver=_Resolver())
+        build_dispatcher("cloudrun_job", Settings(), resolver=_Resolver())
     for available in AVAILABLE:
         assert available in str(refused.value)
-
-
-def test_the_real_settings_carry_what_every_backend_reads() -> None:
-    """The stand-in above mirrors the settings; this holds the mirror to the original."""
-    settings = Settings(_env_file=None)  # type: ignore[call-arg]
-    for field in vars(_Settings()):
-        assert hasattr(settings, field), f"settings lost {field!r}"

@@ -10,7 +10,6 @@ and then die at launch with the run id burned.
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import Any
 
 from redteam_dispatch.dispatcher import Dispatcher
 from redteam_dispatch.docker import BACKEND as DOCKER
@@ -20,6 +19,7 @@ from redteam_dispatch.k8s import K8sJobDispatcher
 from redteam_dispatch.local import BACKEND as LOCAL_SUBPROCESS
 from redteam_dispatch.local import LocalSubprocessDispatcher
 from redteam_secrets.resolver import SecretResolver
+from redteam_settings.config import Settings
 
 AVAILABLE = (DOCKER, K8S_JOB, LOCAL_SUBPROCESS)
 """What this build can launch a run with. Exactly what the settings enum promises."""
@@ -32,7 +32,7 @@ class DispatchBackendUnavailable(RuntimeError):
 
 def build_dispatcher(
     backend: str,
-    settings: Any,
+    settings: Settings,
     *,
     resolver: SecretResolver,
     env: Mapping[str, str] | None = None,

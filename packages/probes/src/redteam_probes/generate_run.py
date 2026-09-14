@@ -1,23 +1,18 @@
-"""One run's probe set: generated in the runner's process, written once, pinned by `probes.json`.
+"""Generate and pin a run's content-addressed probes, or reuse its existing pointer.
 
-**One pull per run, and the brain dies with the generation.** That is not a cache and must never
-become one: the brain is pulled into a temporary directory, read, and discarded, so the client's
-knowledge is resident for exactly as long as reading it takes.
-
-What is written is the blob by digest -- shared with every other run over the same base and
-catalogue -- and the run's own `probes.json`, whose existence is what pins the run's set: a runner
-that finds it reads the digest from there and never generates again, so a catalogue published
-between two launches of one run cannot change the plan.
-"""
+A pulled brain is temporary and discarded after generation. Shared probe blobs are immutable;
+the run's probes.json freezes its set across retries and later catalogue publications."""
 
 from __future__ import annotations
 
 import asyncio
 import contextlib
 import json
-from typing import Any
+
+from langchain_core.language_models.chat_models import BaseChatModel
 
 from redteam_contracts.kb import KnowledgeBase
+from redteam_knowledge.registry import RegistryClient
 from redteam_probes.generation import generate_all, no_base
 from redteam_probes.request import GenerationReport, GenerationRequest
 from redteam_store import layout
@@ -50,8 +45,8 @@ def generate_for(
     store: ObjectStore,
     request: GenerationRequest,
     *,
-    model: Any | None = None,
-    registry: Any | None = None,
+    model: BaseChatModel | None = None,
+    registry: RegistryClient | None = None,
     knowledge_base: KnowledgeBase | None = None,
 ) -> GenerationReport:
     """The run's probe set: read back when it is already pinned, generated and written otherwise.
@@ -73,8 +68,8 @@ def generate_for(
 async def _generate(
     store: ObjectStore,
     request: GenerationRequest,
-    model: Any | None,
-    registry: Any | None,
+    model: BaseChatModel | None,
+    registry: RegistryClient | None,
     knowledge_base: KnowledgeBase | None,
 ) -> GenerationReport:
     """Generate, write the blob and the run's pointer, and return the report.

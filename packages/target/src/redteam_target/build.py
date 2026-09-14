@@ -1,29 +1,19 @@
-"""Which adapter a spec's `kind` resolves to, and how one gets built.
+"""Build the Alquimia or replay target selected by ConnectorSpec.kind.
 
-A closed switch rather than a registry. Two kinds exist and a third is a design decision, not a
-plugin: adding one means deciding how it reports failures, how it threads sessions and how the
-governed door retries it, and that belongs in this package with tests beside it.
-
-**The credential arrives resolved, not as a reference.** Resolving a `secret_ref` is the secrets
-package's job, and keeping it out of here is what stops this package from depending on the secrets
-backend. The runner holds both and hands the value in. Same shape as the model factory, for the same
-reason.
-"""
+Credentials arrive resolved; this package does not depend on secret backends. New target kinds
+require an explicit implementation and tests for failures and sessions."""
 
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import TYPE_CHECKING
 
+from gaussia.core.target_assistant import TargetAssistant
+
+from redteam_contracts.run_spec import ConnectorSpec
 from redteam_target.alquimia import ALQUIMIA, build_alquimia
 from redteam_target.replay import REPLAY, build_replay
 
-if TYPE_CHECKING:
-    from gaussia.core.target_assistant import TargetAssistant
-
-    from redteam_contracts.run_spec import ConnectorSpec
-
-Builder = Callable[["ConnectorSpec", "str | None"], "TargetAssistant"]
+Builder = Callable[[ConnectorSpec, str | None], TargetAssistant]
 
 _BUILDERS: dict[str, Builder] = {
     ALQUIMIA: build_alquimia,

@@ -1,16 +1,7 @@
-"""Consuming a brain through the Boltzmann protocol. Read-only, and ephemeral.
+"""Read a temporary Boltzmann brain without retaining or modifying it.
 
-The protocol splits its surface because read and extend are separable, and most consumers only
-read; a read-only client satisfying `BrainReader` is conforming. This is that client: it uses
-`BrainReader` and exactly two operations of `BrainDistribution`, and implements none of
-`BrainWriter`, `BrainRetention` or `BrainReconciliation`.
-
-The brain is pulled into a temporary directory inside the process that will query it, and discarded
-when generation closes. Three things follow: the runner keeps no persistent state and needs no
-volume, the client's brain does not stay resident on our infrastructure any longer than the
-generation takes, and selective installation is available -- taking the semantic module without the
-canonical one is a real way to consume a brain, and the manifest records what was left out.
-"""
+Pull the requested modules, verify them, expose read operations, and discard the local copy.
+Vector indices require a matching representation space and are ignored by default."""
 
 from __future__ import annotations
 
@@ -21,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from redteam_contracts.kb import Entity, KnowledgeRef, Passage
+from redteam_knowledge.registry import RegistryClient
 
 READER_NAMESPACE = "alquimia"
 READER_NAME = "red-teaming-runner"
@@ -246,7 +238,7 @@ class BoltzmannKnowledgeBase:
 @asynccontextmanager
 async def pulled_brain(
     ref: KnowledgeRef,
-    registry: Any,
+    registry: RegistryClient,
     *,
     modules: list[Any] | None = None,
     ignore_vector_indices: bool = True,
