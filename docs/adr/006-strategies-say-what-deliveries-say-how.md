@@ -1,8 +1,10 @@
 # ADR-006: Strategies declare what a probe says and deliveries declare how it reaches the target
 
-**Status:** Accepted
+**Status:** Superseded by ADR-014
 **Date:** 2026-09-10
 **Tags:** engine, catalogue, contracts, evidence
+
+Superseded by [ADR-014](./014-catalogues-embed-strategy-execution-and-brain-requirements.md).
 
 ## Context
 

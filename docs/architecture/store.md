@@ -18,10 +18,7 @@ a relaunch would find none of its keys and attack the assistant all over again, 
 ```
 capabilities/conditional-write               the proof the backend refuses a second write
 
-catalogues/<name>/vNNNNN.json                a catalogue bundle's commit key (plugins, strategies)
-catalogues/<name>/vNNNNN.contract.json       its contract: principles, weights, verdict tokens
-catalogues/<name>/vNNNNN.grounding.json      which strategies need a knowledge base
-catalogues/<name>/vNNNNN.delivery.json       which strategies are conversations, through which attacker
+catalogues/<name>/vNNNNN.json                one complete schema-v2 catalogue document
 priors/<name>/vNNNNN.json                    a natural-query prior
 
 blobs/<sha256>                               a probe set, by content, shared across runs
@@ -41,9 +38,9 @@ runs/<id>/failures/<attempt>.json            an attempt died, and why
 runs/<id>/manifest.json                      the run closed; exists <=> COMPLETE
 ```
 
-Versioned assets are zero-padded so a listing sorts newest last; sidecars land before the commit
-key so a half-written publication is never a complete version; publishing what is already
-published writes nothing and answers the existing version.
+Versioned assets are zero-padded so a listing sorts newest last. A catalogue is one canonical JSON
+write, so a visible key is complete. Publishing identical canonical bytes writes nothing and
+answers the existing version.
 
 ## Resumption is a set difference
 
