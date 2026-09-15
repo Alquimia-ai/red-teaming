@@ -176,7 +176,7 @@ under `runs/<run_id>/` in MinIO, written once and never rewritten.
 
 | Symptom | What it is |
 |---|---|
-| `redteam local up` cannot pull `ghcr.io/alquimia-ai/...` | the images are private: `docker login ghcr.io -u <user> --password-stdin` with a token that has `read:packages` |
+| `redteam local up` cannot pull `ghcr.io/alquimia-ai/...` | the packages are public, so a refusal is a stale credential: `docker logout ghcr.io`, or log in again with a token that has `read:packages` |
 | the run is `stalled` | the store says it is under way, the platform says no runner is alive: `redteam run resume <id>` |
 | the judge 404s on `/v1/models` | vLLM is still loading weights; `docker logs -f nemotron` |
 | vLLM exits on start | lower `--gpu-memory-utilization`, or serve the NVFP4 variant |
