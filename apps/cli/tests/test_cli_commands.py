@@ -141,13 +141,7 @@ def test_catalogue_publish_sends_the_bundle_and_keeps_the_answer(
     assert body["name"] == "assistant-baseline" and body["contract"]["version"] == "v1"
     assert "published as version 3" in run.stdout
     kept = json.loads(
-        (
-            cwd
-            / ".redteam"
-            / "catalogues"
-            / "assistant-baseline"
-            / "published.json"
-        ).read_text()
+        (cwd / ".redteam" / "catalogues" / "assistant-baseline" / "published.json").read_text()
     )
     assert kept["version"] == 3
 

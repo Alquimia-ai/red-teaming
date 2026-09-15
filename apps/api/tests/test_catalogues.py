@@ -65,9 +65,7 @@ def test_validate_runs_every_check_and_writes_nothing(
 def test_a_malformed_catalogue_is_a_400_and_a_failed_check_a_422(
     client: TestClient, store: MemoryObjectStore
 ) -> None:
-    malformed = client.post(
-        "/catalogues", json=_bundle(BASELINE, "broken", plugins="nope")
-    )
+    malformed = client.post("/catalogues", json=_bundle(BASELINE, "broken", plugins="nope"))
     assert malformed.status_code == 422
 
     bad_contract = client.post(

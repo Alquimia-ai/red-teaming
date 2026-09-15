@@ -161,8 +161,7 @@ class CatalogueDocument(BaseModel):
         if len(strategy_ids) != len(set(strategy_ids)):
             raise ValueError("strategy ids must be unique")
         unknown = sorted(
-            {strategy.plugin for strategy in self.strategies if strategy.plugin}
-            - set(plugin_ids)
+            {strategy.plugin for strategy in self.strategies if strategy.plugin} - set(plugin_ids)
         )
         if unknown:
             raise ValueError(f"strategies name unknown plugins: {unknown}")
