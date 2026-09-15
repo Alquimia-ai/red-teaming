@@ -117,7 +117,7 @@ def test_the_appliance_values_render_a_nodeport_and_a_kept_volume() -> None:
     assert config["REDTEAM_K8S_IMAGE_PULL_SECRET"] == "red-teaming-registry"  # type: ignore[index]
     seed = _one(docs, "ConfigMap", "red-teaming-seed")["data"]
     assert isinstance(seed, dict)
-    assert "catalogues__assistant-baseline__catalogue.json" in seed and "seed.py" in seed
+    assert "catalogues__assistant-baseline.json" in seed and "seed.py" in seed
 
 
 @needs_helm
