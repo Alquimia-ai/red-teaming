@@ -42,6 +42,7 @@ from redteam_catalogue.engines import entity_kinds as kinds_of
 from redteam_catalogue.enumerator import BrainEntityEnumerator
 from redteam_catalogue.premises import unresolved as unresolved_of
 from redteam_catalogue.validate import validate
+from redteam_contracts.catalogue import PREMISE_SLOT, CatalogueStrategy
 from redteam_contracts.kb import KnowledgeBase
 from redteam_contracts.run_spec import ProbeContext
 
@@ -98,6 +99,8 @@ def generate(
     model: BaseChatModel | None = None,
     name_like_kinds: Sequence[str] | None = None,
     grounded: bool = True,
+    strategies: dict[str, CatalogueStrategy] | None = None,
+    language: str = "und",
 ) -> ProbeSet:
     """Build probes from the catalogue and the base.
 
@@ -145,7 +148,15 @@ def generate(
     verifier = build_verifier(kb, catalogue, checked)
     library = build_library(engines, verifier)
 
-    produced = [_cited(probe, enumerator) for probe in library.generate(documents, catalogue)]
+    produced = [
+        _cited(
+            probe,
+            enumerator,
+            strategy=(strategies or {}).get(probe.strategy),
+            language=language,
+        )
+        for probe in library.generate(documents, catalogue)
+    ]
     probes = tuple(sorted(produced, key=lambda probe: probe.id))
 
     return ProbeSet(
@@ -160,7 +171,13 @@ def generate(
     )
 
 
-def _cited(probe: Probe, enumerator: BrainEntityEnumerator) -> Probe:
+def _cited(
+    probe: Probe,
+    enumerator: BrainEntityEnumerator,
+    *,
+    strategy: CatalogueStrategy | None = None,
+    language: str = "und",
+) -> Probe:
     """The probe with a stable identity and the block it can be checked against.
 
     **The identity is re-keyed, and this is the load-bearing step.** gaussia numbers a probe by its
@@ -183,7 +200,24 @@ def _cited(probe: Probe, enumerator: BrainEntityEnumerator) -> Probe:
         if block:
             meta[BLOCK_ID] = block
 
-    return probe.model_copy(update={"id": _identity(probe), "meta": meta})
+    if strategy is not None:
+        messages = strategy.messages(language)
+        premise = hook.references if hook is not None else ""
+        interaction = strategy.interaction
+        meta.update(
+            {
+                "requires_brain": strategy.requires_brain,
+                "interaction_mode": interaction.mode,
+                "interaction_messages": [m.replace(PREMISE_SLOT, premise) for m in messages],
+                "attacker": getattr(interaction, "attacker", None),
+                "max_turns": getattr(interaction, "max_turns", None),
+                "transform": strategy.transform,
+                "language": language,
+            }
+        )
+
+    enriched = probe.model_copy(update={"meta": meta})
+    return enriched.model_copy(update={"id": _identity(enriched)})
 
 
 def _identity(probe: Probe) -> str:
@@ -194,6 +228,18 @@ def _identity(probe: Probe) -> str:
             "strategy": probe.strategy,
             "references": hook.references if hook else None,
             "how": hook.how if hook else None,
+            "execution": {
+                key: probe.meta.get(key)
+                for key in (
+                    "requires_brain",
+                    "interaction_mode",
+                    "interaction_messages",
+                    "attacker",
+                    "max_turns",
+                    "transform",
+                    "language",
+                )
+            },
         },
         sort_keys=True,
         separators=(",", ":"),

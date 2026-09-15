@@ -2,10 +2,8 @@
 
 The contract is the criterion: every response the profiler and the exploiter collect is graded
 against its principles, so which contract graded a run is part of what that run measured. It
-travels as a sidecar of the catalogue bundle -- `contract.json` beside `catalogue.json` -- because
-the plugins of a catalogue name its principles, and a plugin charging a principle no contract
-carries is a catalogue that cannot be graded. Publishing the two as one version is what keeps them
-in step.
+is embedded in the schema-v2 catalogue document because its plugins name these principles. A
+plugin charging a principle the document does not carry is a catalogue that cannot be graded.
 
 Deliberately free of gaussia: parsing the declaration needs yaml and nothing else, while *binding* a
 grader to it needs the library. The catalogue package does the binding; this module only says what
@@ -70,7 +68,7 @@ class ContractSpec:
 
 
 def as_raw(spec: ContractSpec) -> dict[str, Any]:
-    """The declaration as data again: what is encoded into the store's sidecar.
+    """The declaration as data again: what is embedded into the catalogue document.
 
     From the parsed spec rather than from the author's bytes, so two files that declare the same
     contract -- one in YAML, one in JSON, one with a rubric wrapped differently -- land as the same

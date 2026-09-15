@@ -24,7 +24,7 @@ from redteam_engine.assemble import begin_attempt, write_failure, write_manifest
 from redteam_engine.attack import attack
 from redteam_engine.call_journal import CallJournal
 from redteam_engine.planned import AttackerProtocol
-from redteam_probes.generate_run import generate_for
+from redteam_probes.generate_run import generate_for, needs_brain
 from redteam_probes.request import GenerationReport, GenerationRequest
 from redteam_runner.wiring import brain_registry, generator_for
 from redteam_secrets.resolver import SecretResolver, build_resolver
@@ -207,15 +207,30 @@ def _generate(
     directory and discarded with the generation.
     """
     request = GenerationRequest.from_spec(spec)
+    brain_needed = needs_brain(store, request)
     registry = (
         brain_registry(settings, resolver)
-        if spec.kb_ref is not None and knowledge_base is None
+        if brain_needed and spec.brain is not None and knowledge_base is None
         else None
+    )
+    from redteam_catalogue import assets
+    from redteam_catalogue.premises import needs_model
+
+    versions = {
+        name: request.catalogue_versions.get(name) or assets.latest(store, name)
+        for name in request.catalogues
+    }
+    model_needed = any(
+        needs_model(strategy.transform)
+        for name, version in versions.items()
+        for strategy in assets.selected_document(
+            assets.load_document(store, name, version), request.plugins, request.strategies
+        ).strategies
     )
     return generate_for(
         store,
         request,
-        model=generator_for(spec.generator, resolver),
+        model=generator_for(spec.generator, resolver) if model_needed else None,
         registry=registry,
         knowledge_base=knowledge_base,
     )
@@ -233,6 +248,9 @@ def _generation_provenance(report: GenerationReport) -> dict[str, str]:
         "generation_degenerate": ",".join(report.degenerate_strategies),
         "generation_unverified": str(len(report.unverified_probes)),
         "generation_contract_digest": report.contract_digest,
+        "generation_language": report.language or "universal",
+        "generation_brain_digest": report.brain_digest or "none",
+        "generation_model": report.generator_model or "none",
     }
 
 

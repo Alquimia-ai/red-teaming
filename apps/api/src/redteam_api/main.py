@@ -19,9 +19,10 @@ from http import HTTPStatus
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Response
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field
 
 from redteam_api.validation import ValidationFailure, resolve_versions, validate
+from redteam_contracts.catalogue import CatalogueDocument
 from redteam_contracts.manifest import RunPhase
 from redteam_contracts.run_spec import RunSpec
 from redteam_dispatch import JobState
@@ -41,7 +42,7 @@ def _version() -> str:
 app = FastAPI(
     title="Red Teaming API",
     version=_version(),
-    summary="Accepts runs, freezes the spec, launches a runner, publishes catalogue bundles and "
+    summary="Accepts runs, freezes the spec, launches a runner, publishes catalogue documents and "
     "priors, and answers state from the store and the platform.",
 )
 
@@ -126,6 +127,7 @@ def _gate(spec: RunSpec) -> tuple[RunSpec, str]:
             known_catalogues=frozenset(published),
             attackers_named=deps.attackers_named(spec, versions),
             model_driven=selection.model_driven,
+            brain_required=selection.requires_brain,
         )
         if spec.realism_prior is None and (
             spec.realism_prior_version is not None or spec.realism_prior_digest is not None
@@ -383,25 +385,7 @@ def resume_run(run_id: str) -> Relaunched:
     return Relaunched(run_id=run_id, launched=launched, runner=deps.dispatcher().status(run_id))
 
 
-# ---- catalogue bundles --------------------------------------------------------------------------
-
-
-class BundleRequest(BaseModel):
-    """A catalogue bundle as a request body: the same four files a bundle directory holds."""
-
-    name: str
-    catalogue: dict[str, Any]
-    contract: dict[str, Any]
-    """The behavioural contract the catalogue's plugins charge. Required: a catalogue whose
-    plugins charge principles nobody declared cannot be graded."""
-
-    needs_base: list[str] | None = None
-    """The grounding sidecar's list: strategies that need a knowledge base although their phrasing
-    does not say so. Publishing refuses a premise-bearing strategy left out."""
-
-    delivery: dict[str, Any] | None = None
-    """The delivery sidecar's block: which strategies are conversations, through which attacker
-    id, bounded how. A key the sidecar does not know is refused rather than dropped."""
+# ---- catalogue documents ------------------------------------------------------------------------
 
 
 class PublishedBundle(BaseModel):
@@ -420,69 +404,31 @@ class CheckedBundle(BaseModel):
     name: str
     principles: int
     strategies: int
-    needs_base: tuple[str, ...]
-    delivered: tuple[str, ...]
-
-
-def _bundle(request: BundleRequest) -> Any:
-    """The request as the catalogue package's `Bundle`, or a 400 saying which file is malformed."""
-    from gaussia.schemas.roastme import Catalogue
-
-    from redteam_catalogue.bundle import Bundle
-    from redteam_contracts.contract import parse_contract_spec
-
-    try:
-        catalogue = Catalogue.model_validate(request.catalogue)
-    except ValidationError as malformed:
-        raise HTTPException(
-            status_code=400, detail=f"catalogue.json is malformed: {malformed}"
-        ) from malformed
-    try:
-        contract = parse_contract_spec(json.dumps(request.contract))
-    except ValueError as malformed:
-        raise HTTPException(
-            status_code=400, detail=f"contract.json is malformed: {malformed}"
-        ) from malformed
-    return Bundle(
-        catalogue=catalogue,
-        contract=contract,
-        needs_base=frozenset(request.needs_base or ()),
-        delivery=request.delivery,
-    )
+    requires_brain: tuple[str, ...]
+    interaction_modes: dict[str, str]
 
 
 @app.post("/catalogues:validate", response_model=CheckedBundle)
-def validate_bundle(request: BundleRequest) -> CheckedBundle:
-    """Everything publishing checks, with nothing written: the six semantic rejections against the
-    bundle's own contract, the grounding against the phrasings, the delivery against the
-    strategies."""
+def validate_bundle(request: CatalogueDocument) -> CheckedBundle:
+    """Validate one complete catalogue document without writing it."""
     from redteam_catalogue import assets
-    from redteam_catalogue.engines import declared_engines
 
-    bundle = _bundle(request)
     try:
-        checked = assets.check(
-            bundle.catalogue,
-            bundle.contract,
-            *declared_engines(bundle.entity_kinds),
-            needs_base=sorted(assets.needs_a_base(bundle.catalogue, bundle.needs_base)),
-            delivery=bundle.delivery,
-        )
+        assets.check_document(request)
     except ValueError as refused:
         raise HTTPException(status_code=422, detail=str(refused)) from refused
     return CheckedBundle(
         name=request.name,
-        principles=len(bundle.contract.principles),
-        strategies=len(bundle.catalogue.strategies),
-        needs_base=tuple(sorted(checked.needs_base)),
-        delivered=checked.conducted,
+        principles=len(assets.contract_of(request).principles),
+        strategies=len(request.strategies),
+        requires_brain=tuple(sorted(s.id for s in request.strategies if s.requires_brain)),
+        interaction_modes={s.id: s.interaction.mode for s in request.strategies},
     )
 
 
 @app.post("/catalogues", status_code=201, response_model=PublishedBundle)
-def publish_bundle(request: BundleRequest, response: Response) -> PublishedBundle:
-    """Validate and write the next version of a bundle: catalogue, contract and sidecars, as one
-    version.
+def publish_bundle(request: CatalogueDocument, response: Response) -> PublishedBundle:
+    """Validate and write the next immutable version of one catalogue document.
 
     Versioned rather than overwritten: the store only appends, and a catalogue replaced in place
     would make every finished run's provenance unreadable. `201` when a version was written; `200`
@@ -491,20 +437,10 @@ def publish_bundle(request: BundleRequest, response: Response) -> PublishedBundl
     """
     from redteam_api import deps
     from redteam_catalogue import assets
-    from redteam_catalogue.engines import declared_engines
     from redteam_store.interface import ObjectAlreadyExists
 
-    bundle = _bundle(request)
     try:
-        published = assets.publish(
-            deps.store(),
-            request.name,
-            bundle.catalogue,
-            bundle.contract,
-            *declared_engines(bundle.entity_kinds),
-            needs_base=sorted(assets.needs_a_base(bundle.catalogue, bundle.needs_base)),
-            delivery=bundle.delivery,
-        )
+        published = assets.publish_document(deps.store(), request)
     except ValueError as refused:
         raise HTTPException(status_code=422, detail=str(refused)) from refused
     except ObjectAlreadyExists as raced:

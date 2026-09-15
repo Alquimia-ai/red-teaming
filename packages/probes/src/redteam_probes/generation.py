@@ -12,13 +12,10 @@ from gaussia.schemas.roastme import Probe
 from langchain_core.language_models.chat_models import BaseChatModel
 
 from redteam_catalogue import assets
-from redteam_catalogue.contract import validation_contract
 from redteam_catalogue.memory_kb import MemoryKnowledgeBase
 from redteam_contracts.kb import KnowledgeBase
 from redteam_probes.generate import digest_of, generate
 from redteam_probes.request import GenerationRequest
-from redteam_store import contract as contract_store
-from redteam_store import grounding
 from redteam_store.interface import ObjectStore
 
 
@@ -69,10 +66,13 @@ def generate_all(
     catalogues that disagree on the contract is refused here with `ContractMismatch`, and the
     catalogue of each is validated against that one contract before a probe exists.
     """
-    grounded = request.kb_ref is not None
+    brain_declared = request.brain is not None
     versions = resolve_versions(store, request)
-    contract_spec, contract_digest = contract_store.shared(store, versions)
+    contract_spec, contract_digest = assets.shared_contract(store, versions)
+    from redteam_catalogue.contract import validation_contract
+
     contract = validation_contract(contract_spec)
+    language = request.context.language if request.context is not None else "und"
 
     probes: list[Probe] = []
     degenerate: list[str] = []
@@ -82,35 +82,40 @@ def generate_all(
     left_out: list[str] = []
 
     for name, version in versions.items():
-        published = assets.load(store, name, version)
-        declared = grounding.load(store, name, version)
-        left_out.extend(
-            sorted(
-                strategy.id
-                for strategy in published.strategies
-                if (strategy.id in assets.needs_a_base(published, declared)) is not grounded
+        document = assets.selected_document(
+            assets.load_document(store, name, version), request.plugins, request.strategies
+        )
+        required = tuple(s for s in document.strategies if s.requires_brain)
+        independent = tuple(s for s in document.strategies if not s.requires_brain)
+        if required and not brain_declared:
+            raise ValueError(
+                f"the selected strategies {sorted(s.id for s in required)} require a brain, and "
+                "this run declares none"
             )
-        )
-        for_this_run = assets.generatable(
-            published, grounded=grounded, declared=declared, name=name
-        )
-        catalogue = assets.narrow(for_this_run, request.plugins, request.strategies)
-        produced = generate(
-            catalogue,
-            kb,
-            contract=contract,
-            context=request.context,
-            model=model,
-            grounded=grounded,
-        )
-        probes.extend(produced.probes)
-        degenerate.extend(d.strategy_id for d in produced.degenerate)
-        engines.extend(produced.declaration.ran)
-        for construction, entities in produced.unresolved.items():
-            # Joined, not replaced: several catalogues naming one construction is the ordinary
-            # case, and what could not be built has to be a number somebody reads.
-            unresolved.setdefault(construction, []).extend(entities)
-        unverified.extend(produced.unverified)
+        for strategies, base, uses_brain in (
+            (required, kb, True),
+            (independent, no_base(), False),
+        ):
+            if not strategies:
+                continue
+            sliced = document.model_copy(update={"strategies": strategies})
+            catalogue = assets.as_catalogue(sliced, language)
+            produced = generate(
+                catalogue,
+                base,
+                contract=contract,
+                context=request.context,
+                model=model,
+                grounded=uses_brain,
+                strategies={strategy.id: strategy for strategy in strategies},
+                language=language,
+            )
+            probes.extend(produced.probes)
+            degenerate.extend(d.strategy_id for d in produced.degenerate)
+            engines.extend(produced.declaration.ran)
+            for construction, entities in produced.unresolved.items():
+                unresolved.setdefault(construction, []).extend(entities)
+            unverified.extend(produced.unverified)
 
     # Sorted, so the artifact is canonical: the same probes from catalogues named in a different
     # order serialise to the same bytes under the same digest.
@@ -128,7 +133,13 @@ def generate_all(
             for construction, entities in unresolved.items()
         },
         unverified=tuple(unverified),
-        grounded=grounded,
+        grounded=any(
+            strategy.requires_brain
+            for name, version in versions.items()
+            for strategy in assets.selected_document(
+                assets.load_document(store, name, version), request.plugins, request.strategies
+            ).strategies
+        ),
         set_aside=tuple(dict.fromkeys(left_out)),
     )
 

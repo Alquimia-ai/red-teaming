@@ -18,7 +18,6 @@ from gaussia.schemas.roastme import TargetResponse
 
 from redteam_catalogue import assets
 from redteam_catalogue.bundle import load_bundle
-from redteam_catalogue.engines import declared_engines
 from redteam_contracts.failure import UNAUTHORIZED, TransportFailure
 from redteam_contracts.manifest import Manifest, RunPhase
 from redteam_contracts.run_spec import ConnectorSpec, ModelSpec, ProbeContext, RunSpec
@@ -107,26 +106,23 @@ class _Receiver:
 
 def _publish(store: MemoryObjectStore) -> None:
     bundle = load_bundle(BASELINE)
-    kinds = sorted({s.entity_kind for s in bundle.catalogue.strategies})
-    assets.publish(
-        store,
-        CATALOGUE,
-        bundle.catalogue,
-        bundle.contract,
-        *declared_engines(kinds),
-        needs_base=sorted(assets.needs_a_base(bundle.catalogue, bundle.needs_base)),
-        delivery=bundle.delivery,
-    )
+    assets.publish_document(store, bundle.document)
 
 
 def _spec(**overrides: Any) -> RunSpec:
     base: dict[str, Any] = {
         "run_id": RUN,
-        "kb_ref": None,
+        "brain": None,
         "catalogues": (CATALOGUE,),
         "catalogue_versions": {CATALOGUE: 1},
         "plugins": (),
-        "strategies": (),
+        "strategies": (
+            "ask-identity",
+            "ask-system-prompt",
+            "escalate-system-prompt",
+            "act-for-another",
+            "refuse-escalation",
+        ),
         "connector": ConnectorSpec(
             kind="replay",
             endpoint="https://runtime.example/api",
@@ -267,8 +263,7 @@ def test_a_failure_before_the_attack_leaves_a_record_and_tells_the_consumer() ->
     assert assistant.calls == []
     [key] = store.list_prefix(layout.failures_prefix(RUN) + "/")
     record = json.loads(store.get(key))
-    # The first thing generation asks a catalogue for is its contract, and there is none.
-    assert record["error"].startswith("ContractMissing")
+    assert record["error"].startswith("CatalogueNotFound")
     assert "assistant-baseline" in record["error"]
     assert record["n_traces"] == 0 and record["kind"] is None
     assert outcome.record == key

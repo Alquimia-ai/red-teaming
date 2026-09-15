@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from redteam_contracts.kb import KnowledgeRef
+from redteam_contracts.kb import BrainRef
 from redteam_contracts.run_spec import ModelSpec, ProbeContext, RunSpec
 
 
@@ -19,8 +19,8 @@ class GenerationRequest(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     run_id: str
-    kb_ref: KnowledgeRef | None = None
-    kb_subjects: tuple[str, ...] = ()
+    brain: BrainRef | None = None
+    brain_subjects: tuple[str, ...] = ()
     """Which subjects of the brain the run declared in scope. Empty is the whole brain."""
 
     catalogues: tuple[str, ...]
@@ -44,8 +44,8 @@ class GenerationRequest(BaseModel):
     def from_spec(cls, spec: RunSpec) -> GenerationRequest:
         return cls(
             run_id=spec.run_id,
-            kb_ref=spec.kb_ref,
-            kb_subjects=spec.kb_subjects,
+            brain=spec.brain,
+            brain_subjects=spec.brain_subjects,
             catalogues=spec.catalogues,
             catalogue_versions=dict(spec.catalogue_versions),
             plugins=spec.plugins,
@@ -109,3 +109,12 @@ class GenerationReport(BaseModel):
     For a run with no base, the ones that lean on `{premise}`; for a run with one, the ones that
     stand without a premise and would otherwise have had it appended. Reported for the reason the
     constructions report what they could not build: a silence would read as nothing missing."""
+
+    brain_digest: str | None = None
+    """The pinned brain actually read.
+
+    None when a brain was supplied but no selected strategy used it.
+    """
+
+    language: str | None = None
+    generator_model: str | None = None

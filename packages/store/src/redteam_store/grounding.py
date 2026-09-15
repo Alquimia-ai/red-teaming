@@ -80,6 +80,16 @@ def load(store: ObjectStore, name: str, version: int) -> frozenset[str]:
     a base whether or not the sidecar mentions it.
     """
     try:
+        catalogue = json.loads(store.get(layout.catalogue(name, version)))
+    except ObjectNotFound:
+        catalogue = {}
+    if catalogue.get("schema_version") == 2:
+        return frozenset(
+            str(strategy["id"])
+            for strategy in catalogue.get("strategies", ())
+            if strategy.get("requires_brain") is True
+        )
+    try:
         raw = store.get(layout.catalogue_grounding(name, version))
     except ObjectNotFound:
         return frozenset()
@@ -93,6 +103,9 @@ def needs_a_base(store: ObjectStore, name: str, version: int) -> frozenset[str]:
     which say so themselves, and the sidecar, which says what a phrasing cannot -- a slotless
     strategy that wants the premise appended anyway.
     """
+    raw = json.loads(store.get(layout.catalogue(name, version)))
+    if raw.get("schema_version") == 2:
+        return load(store, name, version)
     slotted = {
         str(strategy["id"])
         for strategy in strategies(store, name, version)
