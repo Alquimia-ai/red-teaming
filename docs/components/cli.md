@@ -8,7 +8,7 @@ checkout.
 ```
 redteam init [--api-url] [--receiver-url]
 redteam local up [--build] | down | status | logs [service] [-f]
-redteam catalogue validate <dir> | publish <name> <dir> | list
+redteam catalogue validate <file> | publish <file> | list
 redteam prior publish <name> <file>
 redteam run validate <spec> | start <spec> [--follow] [--deadline S] | status <id> | result <id> | list | resume <id>
 redteam receiver export <run_id>
@@ -67,7 +67,7 @@ release published or the file cannot be replaced, 3 the releases API did not ans
 
 - `main.py`: the argparse tree and the rich rendering; `main(argv, out=, err=)` takes its consoles.
 - `api.py`: the HTTP client, `ApiError`/`Unreachable`, the receiver's reader.
-- `bundle.py`: a bundle directory as the API's request body, with the contracts package alone.
+- `bundle.py`: one YAML or JSON catalogue document as the API request body.
 - `workspace.py`: the `.redteam/` directory.
 - `local.py`: docker compose, with the compose file from the checkout or from inside the wheel.
 - `release.py`: where the releases are, which asset this platform wants, and how one file replaces
