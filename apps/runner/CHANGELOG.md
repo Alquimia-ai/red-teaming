@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.2.0](https://github.com/Alquimia-ai/red-teaming/compare/runner-v0.1.1...runner-v0.2.0) (2026-09-15)
+
+
+### ⚠ BREAKING CHANGES
+
+* **catalogue:** run specs now use brain instead of kb_ref.
+
+### Features
+
+* **catalogue:** adopt schema v2 and conditional brains ([12c9874](https://github.com/Alquimia-ai/red-teaming/commit/12c98741d4946a398ae4d1a0c1caf247331c2e14))
+
+
+### Bug Fixes
+
+* **deploy:** include schema v2 chart assertion ([207d815](https://github.com/Alquimia-ai/red-teaming/commit/207d815eee8e9b549cd7234aa453e35b62dca3d6))
+
 ## [0.1.1](https://github.com/Alquimia-ai/red-teaming/compare/runner-v0.1.0...runner-v0.1.1) (2026-09-14)
 
 
