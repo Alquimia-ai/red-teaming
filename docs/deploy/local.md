@@ -1,7 +1,7 @@
 # The local stack
 
 Everything the platform needs on one machine, through docker compose: MinIO as the store, the API,
-a seed that publishes the bundles under `deploy/seed/`, a webhook receiver that keeps every
+a seed that publishes the catalogue documents under `deploy/seed/`, a webhook receiver that keeps every
 delivery, and a mock assistant that speaks the Alquimia runtime's inference API and misbehaves on
 purpose. The runner is not a service: the API creates one container per run through the Docker
 socket, exactly as it creates one Job per run on a cluster.
@@ -16,12 +16,12 @@ redteam local up --build                   # from a checkout; `redteam local up`
 ```
 
 `local up` builds `red-teaming-runner:local`, brings the stack up, and the seed publishes the two
-bundles and the prior into an empty store. Bringing the stack up again publishes nothing: an
-identical bundle is answered with the version it already has.
+catalogues and the prior into an empty store. Bringing the stack up again publishes nothing: an
+identical document is answered with the version it already has.
 
 | Service | Where | What it is |
 |---|---|---|
-| `api` | http://localhost:8080 | the gate: `POST /runs`, `GET /runs/{id}`, bundles, priors |
+| `api` | http://localhost:8080 | the gate: `POST /runs`, `GET /runs/{id}`, catalogues, priors |
 | `minio` | http://localhost:9000 (console :9001) | the store, `redteamadmin`/`redteamadmin` |
 | `mock-target` | http://localhost:8082 | an assistant that discloses its instructions when pressed |
 | `receiver` | http://localhost:8083 | keeps every webhook it acknowledges; `GET /received?run_id=` |
@@ -29,8 +29,8 @@ identical bundle is answered with the version it already has.
 ## A run
 
 ```bash
-redteam catalogue validate my-bundle/                 # every check publishing runs; writes nothing
-redteam catalogue publish my-bundle my-bundle/        # the next version, kept in .redteam/catalogues/
+redteam catalogue validate my-catalogue.yaml           # every check publishing runs; writes nothing
+redteam catalogue publish my-catalogue.yaml            # the next version, kept in .redteam/catalogues/
 redteam run validate spec.json                        # the gate alone
 redteam run start spec.json --follow                  # accept, freeze, launch; poll until it closes
 redteam run result <run_id>                           # the manifest -> .redteam/runs/<run_id>/manifest.json

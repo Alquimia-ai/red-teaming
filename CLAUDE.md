@@ -117,11 +117,11 @@ Use these words, in this sense, everywhere -- code, docs, commits:
 | Term | Meaning |
 |---|---|
 | **run** | One accepted request, frozen as `spec.json`, executed by one runner. |
-| **catalogue** | A versioned bundle: `catalogue.json` (plugins and strategies) with its sidecars `contract.json`, `grounding.json`, `delivery.json`. |
+| **catalogue** | One versioned schema-v2 document containing its contract, plugins, strategies, brain requirements and interactions. |
 | **plugin** | A risk family: what is tested, and which principle of the contract it charges. |
-| **strategy** | How a probe is built: entity kind, construction (transform), documented or invented premise, phrasing. |
+| **strategy** | How a probe is built and delivered: entity kind, transform, `doc`, brain requirement and interaction. |
 | **construction** | The code a strategy's `transform` key resolves to: deterministic (`swap_token`, `shift_figure`, `shift_date`) or model-driven (`contextual_sibling`). |
-| **delivery** | How a probe reaches the assistant: one turn, or a conversation an attacker steers. |
+| **delivery** | How a probe reaches the assistant: one turn, a fixed script, or an adaptive conversation. |
 | **contract** | The behavioural contract the assistant is held to: principles with weights and rubrics, plus verdict tokens. Travels inside the catalogue bundle. |
 | **principle** | One rule of the contract, graded by the control judge. |
 | **knowledge base** | The Boltzmann brain a run's probes are anchored in, pinned by OCI digest. Read-only. |

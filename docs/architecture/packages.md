@@ -22,13 +22,13 @@ cli -> contracts
 | `contracts` | the domain types with zero IO: `RunSpec`, `Plan`/`WorkUnit`/`attack_id`, `Trace`, `Manifest`/`Coverage`, `ContractSpec`, `TransportFailure`, `KnowledgeBase` protocol, the run id rule, `ServingPath` |
 | `settings` | `REDTEAM_*` settings: the three seams (store, dispatch, secrets) and the cluster's knobs |
 | `secrets` | `SecretResolver`: `env` and `file` backends |
-| `store` | the append-only `ObjectStore` (memory, S3), the key layout, codecs, versioned assets, the sidecar readers, the resume difference, manifests |
+| `store` | the append-only `ObjectStore` (memory, S3), the key layout, codecs, versioned assets, the resume difference, manifests |
 | `dispatch` | one runner per run: docker, Kubernetes Job, subprocess; `launch` and `status` |
 | `delivery` | the bounded, idempotent webhook |
 | `knowledge` | the read-only Boltzmann brain client: pull by digest, enumerate completely, prove membership |
 | `judges` | chat-model providers (`openrouter`, `openai_compatible`), the logprob grader with retries, the stand-in grader, embeddings |
 | `target` | the assistant under test: the Alquimia runtime adapter, replay, typed failures by status name, the safe-mode gate |
-| `catalogue` | bundles: loading, the construction registry and its transforms, semantic validation, publishing, the contract binding, an in-memory knowledge base |
+| `catalogue` | schema-v2 documents: loading, the transform registry, semantic validation, publishing, the contract binding, an in-memory knowledge base |
 | `probes` | one run's probe set: engines per entity kind, the brain enumerator and verifier, content identity, the generation record |
 | `engine` | conduction: the governed door, planned deliveries and the attacker, recording, resume, control artifacts, the dataset, `attack` |
 
