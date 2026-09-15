@@ -26,6 +26,8 @@ MANY_TURNS = "many-turns"
 """A conversation opened by the probe's query and steered by an attacker toward the plugin's
 objective."""
 
+SCRIPTED_TURNS = "scripted-multi-turn"
+
 ATTACKER_ATTEMPTS = 3
 """How many times the attacker is asked for a turn before the conversation closes without it.
 
@@ -91,6 +93,9 @@ class PlannedDelivery:
     """The strategy's description as gaussia put it on the probe -- its attributes -- so the
     attacker knows how the conversation opened."""
 
+    script: tuple[str, ...] = ()
+    """Resolved user messages for a scripted conversation, including its opening."""
+
 
 @dataclass(frozen=True)
 class Conversation:
@@ -144,6 +149,15 @@ def planned_deliveries(
         delivery = _delivery_of(unit, probes, deliveries)
         if not delivery.conducted:
             planned.append(PlannedDelivery(delivery=STATIC, objective=None))
+            continue
+        if delivery.scripted:
+            messages = tuple(str(m) for m in probe.get("meta", {}).get("interaction_messages", ()))
+            if len(messages) < 2:
+                raise ValueError(
+                    f"strategy {probe.get('strategy')!r} declares scripted delivery without at "
+                    "least two resolved messages"
+                )
+            planned.append(PlannedDelivery(delivery=delivery, objective=None, script=messages))
             continue
         plugin = probe.get("plugin")
         objective = objectives.get(str(plugin)) if plugin else None
@@ -218,7 +232,7 @@ def delivery_provenance(
     conversations and conceal the one that ended early.
     """
     for labels in replayed:
-        if labels.orchestration_technique != MANY_TURNS:
+        if labels.orchestration_technique not in {MANY_TURNS, SCRIPTED_TURNS}:
             continue
         conducted += 1
         if labels.ended not in ORDINARY_ENDS:
@@ -291,6 +305,45 @@ def conduct_many(
             pairs=tuple(pairs),
             technique=MANY_TURNS,
             attacker=planned.delivery.attacker,
+            session_id=session,
+            ended=ended,
+        ),
+        fatal,
+    )
+
+
+def conduct_scripted(
+    opening: str,
+    exchange: Exchange,
+    *,
+    planned: PlannedDelivery,
+    mint: Callable[[], str] | None = None,
+) -> tuple[Conversation | None, BaseException | None]:
+    """Send a fixed script in one session; every message uses the governed exchange."""
+    if not planned.delivery.scripted or len(planned.script) < 2:
+        raise ValueError("scripted delivery requires at least two messages")
+    if planned.script[0] != opening:
+        raise ValueError("the scripted opening differs from the generated probe query")
+    pairs: list[tuple[str, TargetResponse]] = []
+    session: str | None = None
+    fatal: BaseException | None = None
+    ended = ENDED_BY_BOUND
+    for query in planned.script:
+        response, fatal = exchange(query, session)
+        if response is None:
+            ended = ENDED_BY_BUDGET
+            break
+        pairs.append((query, response))
+        session = response.session_id or session or (mint or _mint)()
+        if fatal is not None or response.failed:
+            ended = ENDED_BY_TARGET_FAILURE
+            break
+    if not pairs:
+        return None, fatal
+    return (
+        Conversation(
+            pairs=tuple(pairs),
+            technique=SCRIPTED_TURNS,
             session_id=session,
             ended=ended,
         ),

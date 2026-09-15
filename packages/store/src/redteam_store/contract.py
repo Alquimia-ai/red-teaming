@@ -57,6 +57,12 @@ def encode(raw: Any) -> bytes:
 
 def load_bytes(store: ObjectStore, name: str, version: int) -> bytes:
     try:
+        document = json.loads(store.get(layout.catalogue(name, version)))
+    except ObjectNotFound:
+        document = {}
+    if document.get("schema_version") == 2:
+        return encode(document["contract"])
+    try:
         return store.get(layout.catalogue_contract(name, version))
     except ObjectNotFound as absent:
         raise ContractMissing(name, version) from absent

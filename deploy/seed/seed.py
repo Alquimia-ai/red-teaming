@@ -54,35 +54,19 @@ def wait_for_api() -> None:
     sys.exit(1)
 
 
-def bundle(directory: Path) -> dict[str, Any]:
-    body: dict[str, Any] = {
-        "name": directory.name,
-        "catalogue": json.loads((directory / "catalogue.json").read_text()),
-        "contract": json.loads((directory / "contract.json").read_text()),
-    }
-    grounding = directory / "grounding.json"
-    if grounding.is_file():
-        body["needs_base"] = json.loads(grounding.read_text())["needs_base"]
-    delivery = directory / "delivery.json"
-    if delivery.is_file():
-        body["delivery"] = json.loads(delivery.read_text())
-    return body
-
-
 def main() -> int:
     wait_for_api()
     print(f"seeding {API} from {HERE}")
     failed = 0
-    for directory in sorted((HERE / "catalogues").iterdir()):
-        if not (directory / "catalogue.json").is_file():
-            continue
-        status, answer = request("POST", "/catalogues", bundle(directory))
+    for catalogue in sorted((HERE / "catalogues").glob("*.json")):
+        document = json.loads(catalogue.read_text())
+        status, answer = request("POST", "/catalogues", document)
         if status in (200, 201):
             verb = "published" if answer.get("created") else "already published"
-            print(f"  catalogue {directory.name}: {verb} as version {answer['version']}")
+            print(f"  catalogue {document['name']}: {verb} as version {answer['version']}")
         else:
             failed += 1
-            print(f"  catalogue {directory.name}: refused {status}: {answer}", file=sys.stderr)
+            print(f"  catalogue {document['name']}: refused {status}: {answer}", file=sys.stderr)
     for directory in sorted((HERE / "priors").iterdir()):
         prior = directory / "prior.json"
         if not prior.is_file():

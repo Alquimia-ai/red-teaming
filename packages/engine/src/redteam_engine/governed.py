@@ -27,6 +27,7 @@ from redteam_engine.planned import (
     Conversation,
     PlannedDelivery,
     conduct_many,
+    conduct_scripted,
     static,
 )
 from redteam_target.capabilities import CapabilityGate
@@ -201,6 +202,12 @@ class GovernedTarget(TargetAssistant):  # type: ignore[misc]  # gaussia ships no
         if planned is None or not planned.delivery.conducted:
             response, fatal = self._exchange(query, session_id)
             conversation = static(query, response) if response is not None else None
+        elif planned.delivery.scripted:
+            conversation, fatal = conduct_scripted(query, self._exchange, planned=planned)
+            if conversation is not None:
+                self.conducted += 1
+                if conversation.ended not in ORDINARY_ENDS:
+                    self.ended_early += 1
         else:
             attacker_id = planned.delivery.attacker or ""
             attacker = self._attackers.get(attacker_id)

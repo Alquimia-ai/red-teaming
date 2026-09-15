@@ -11,7 +11,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
-from redteam_contracts.kb import Entity, KnowledgeRef, Passage
+from redteam_contracts.kb import BrainRef, Entity, Passage
 from redteam_knowledge.registry import RegistryClient
 
 READER_NAMESPACE = "alquimia"
@@ -237,7 +237,7 @@ class BoltzmannKnowledgeBase:
 
 @asynccontextmanager
 async def pulled_brain(
-    ref: KnowledgeRef,
+    ref: BrainRef,
     registry: RegistryClient,
     *,
     modules: list[Any] | None = None,

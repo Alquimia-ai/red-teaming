@@ -19,7 +19,6 @@ from gaussia.schemas.roastme import TargetResponse
 
 from redteam_catalogue import assets
 from redteam_catalogue.bundle import load_bundle
-from redteam_catalogue.engines import declared_engines
 from redteam_contracts.plan import Plan, PlannedProbe, expand
 from redteam_contracts.run_spec import ConnectorSpec, ModelSpec, ProbeContext, RunSpec
 from redteam_engine.attack import Attacked, attack
@@ -124,16 +123,7 @@ class _Resolver:
 
 def _publish(store: MemoryObjectStore) -> None:
     bundle = load_bundle(BASELINE)
-    kinds = sorted({s.entity_kind for s in bundle.catalogue.strategies})
-    published = assets.publish(
-        store,
-        CATALOGUE,
-        bundle.catalogue,
-        bundle.contract,
-        *declared_engines(kinds),
-        needs_base=sorted(assets.needs_a_base(bundle.catalogue, bundle.needs_base)),
-        delivery=bundle.delivery,
-    )
+    published = assets.publish_document(store, bundle.document)
     assert published.version == 1 and "escalate-system-prompt" in published.delivered
 
 

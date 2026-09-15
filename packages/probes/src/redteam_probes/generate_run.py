@@ -11,6 +11,7 @@ import json
 
 from langchain_core.language_models.chat_models import BaseChatModel
 
+from redteam_catalogue import assets
 from redteam_contracts.kb import KnowledgeBase
 from redteam_knowledge.registry import RegistryClient
 from redteam_probes.generation import generate_all, no_base
@@ -56,7 +57,7 @@ def generate_for(
         request: What the frozen spec asks generation for.
         model: The generator the run declared, already built; None when it declared none.
         registry: The registry client a brain is pulled through. Required when the request names a
-            `kb_ref` and no `knowledge_base` is handed in.
+            `brain` and no `knowledge_base` is handed in.
         knowledge_base: A base already open, for a rehearsal or a test. Skips the pull.
     """
     pinned = existing_report(store, request.run_id)
@@ -78,8 +79,11 @@ async def _generate(
     **inside** that context, so the client's knowledge is resident for exactly as long as reading it
     takes.
     """
-    if request.kb_ref is None:
+    needs_brain_for_run = needs_brain(store, request)
+    if not needs_brain_for_run:
         produced = generate_all(store, request, no_base(), model=model)
+    elif request.brain is None:
+        raise ValueError("the selected strategies require a brain, and this run declares none")
     elif knowledge_base is not None:
         produced = generate_all(store, request, knowledge_base, model=model)
     else:
@@ -90,7 +94,7 @@ async def _generate(
             )
         from redteam_knowledge.boltzmann_kb import pulled_brain
 
-        async with pulled_brain(request.kb_ref, registry, subjects=request.kb_subjects) as brain:
+        async with pulled_brain(request.brain, registry, subjects=request.brain_subjects) as brain:
             produced = generate_all(store, request, brain, model=model)
 
     payload = encode_json([p.model_dump(mode="json") for p in produced.probes])
@@ -120,6 +124,11 @@ async def _generate(
         unverified_probes=produced.unverified,
         grounded=produced.grounded,
         strategies_set_aside=produced.set_aside,
+        brain_digest=request.brain.digest if produced.grounded and request.brain else None,
+        language=request.context.language if request.context else None,
+        generator_model=(
+            request.generator.model if model is not None and request.generator else None
+        ),
         skipped_existing=skipped,
     )
     # The pointer is the run's generation record, written once. Its existence is what pins the
@@ -138,6 +147,20 @@ async def _generate(
             content_type="application/json",
         )
     return report
+
+
+def needs_brain(store: ObjectStore, request: GenerationRequest) -> bool:
+    versions = {
+        name: request.catalogue_versions.get(name) or assets.latest(store, name)
+        for name in request.catalogues
+    }
+    return any(
+        strategy.requires_brain
+        for name, version in versions.items()
+        for strategy in assets.selected_document(
+            assets.load_document(store, name, version), request.plugins, request.strategies
+        ).strategies
+    )
 
 
 REFUSED = "refused"

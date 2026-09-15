@@ -11,9 +11,8 @@ from gaussia.schemas.roastme import Catalogue, Probe
 
 from redteam_catalogue import assets
 from redteam_catalogue.bundle import Bundle, load_bundle
-from redteam_catalogue.engines import declared_engines
 from redteam_catalogue.memory_kb import MemoryKnowledgeBase
-from redteam_contracts.kb import Entity, KnowledgeRef, Passage
+from redteam_contracts.kb import BrainRef, Entity, Passage
 from redteam_probes.generate import digest_of
 from redteam_probes.generate_run import (
     MISSING,
@@ -33,7 +32,7 @@ from redteam_store.memory import MemoryObjectStore
 ROOT = Path(__file__).resolve().parents[3]
 BASELINE = ROOT / "deploy" / "seed" / "catalogues" / "assistant-baseline"
 
-GROUNDED_KB = KnowledgeRef(registry="ghcr.io", repository="acme/kb", digest="sha256:" + "b" * 64)
+GROUNDED_KB = BrainRef(registry="ghcr.io", repository="acme/kb", digest="sha256:" + "b" * 64)
 """A reference the gate accepts, standing for whatever base a test hands in."""
 
 ATTESTED: tuple[tuple[str, str], ...] = (
@@ -41,6 +40,14 @@ ATTESTED: tuple[tuple[str, str], ...] = (
     ("product", "Pago de Nominas"),
     ("fact", "Cuenta Digital Libre tiene un limite de RD$1.500,00"),
     ("fact", "Pago de Nominas cuesta RD$9.900,00"),
+)
+
+BRAINLESS = (
+    "ask-identity",
+    "ask-system-prompt",
+    "escalate-system-prompt",
+    "act-for-another",
+    "refuse-escalation",
 )
 
 
@@ -61,17 +68,8 @@ def _base(fixture: tuple[tuple[str, str], ...]) -> MemoryKnowledgeBase:
 def _publish(
     store: MemoryObjectStore, name: str, bundle: Bundle, catalogue: Catalogue | None = None
 ) -> None:
-    catalogue = catalogue or bundle.catalogue
-    kinds = sorted({s.entity_kind for s in catalogue.strategies})
-    assets.publish(
-        store,
-        name,
-        catalogue,
-        bundle.contract,
-        *declared_engines(kinds),
-        needs_base=sorted(assets.needs_a_base(catalogue, bundle.needs_base)),
-        delivery=bundle.delivery,
-    )
+    document = bundle.document_for(catalogue) if catalogue is not None else bundle.document
+    assets.publish_document(store, document.model_copy(update={"name": name}))
 
 
 @pytest.fixture
@@ -87,7 +85,11 @@ def store(bundle: Bundle) -> MemoryObjectStore:
 
 
 def _request(run_id: str, **overrides: Any) -> GenerationRequest:
-    fields: dict[str, Any] = {"run_id": run_id, "catalogues": ("baseline",)}
+    fields: dict[str, Any] = {
+        "run_id": run_id,
+        "catalogues": ("baseline",),
+        "strategies": () if overrides.get("brain") is not None else BRAINLESS,
+    }
     fields.update(overrides)
     return GenerationRequest.model_validate(fields)
 
@@ -102,7 +104,7 @@ def test_a_brainless_run_generates_the_standing_half_and_cites_nothing(
     assert report.engines_ran == ("enumeration",)
     assert report.degenerate_strategies == () and report.unverified_probes == ()
     assert report.unresolved_entities == {}, "no base, so no entity to deform"
-    assert set(report.strategies_set_aside) == assets.needs_a_base(bundle.catalogue)
+    assert report.strategies_set_aside == ()
     assert report.catalogue_versions == {"baseline": 1}
     assert report.contract_digest == contract_store.digest(store, "baseline", 1)
 
@@ -195,14 +197,18 @@ def test_a_grounded_run_is_addressed_by_the_digest_the_library_computes(
 ) -> None:
     """One artifact, one identity: hash what is there, get the key it is under."""
     report = generate_for(
-        store, _request("run-addressed", kb_ref=GROUNDED_KB), knowledge_base=_base(ATTESTED)
+        store, _request("run-addressed", brain=GROUNDED_KB), knowledge_base=_base(ATTESTED)
     )
 
     assert report.grounded is True
     stored = json.loads(store.get(layout.blob(report.probes_digest)))
     assert digest_of([Probe.model_validate(p) for p in stored]) == report.probes_digest
     assert json.loads(store.get(layout.probes("run-addressed")))["digest"] == report.probes_digest
-    assert all(p["meta"].get("block_id") for p in stored), "every grounded probe cites its block"
+    grounded = [p for p in stored if p["meta"]["requires_brain"]]
+    independent = [p for p in stored if not p["meta"]["requires_brain"]]
+    assert grounded and all(p["meta"].get("block_id") for p in grounded)
+    assert independent and all(p["hook"] is None for p in independent)
+    assert report.brain_digest == GROUNDED_KB.digest
 
 
 def _swap_token_over(store: MemoryObjectStore, bundle: Bundle, name: str, kind: str) -> None:
@@ -233,7 +239,7 @@ def test_every_catalogue_reports_what_its_constructions_could_not_deform(
 
     report = generate_for(
         store,
-        _request("run-two", kb_ref=GROUNDED_KB, catalogues=("swap-product", "swap-fact")),
+        _request("run-two", brain=GROUNDED_KB, catalogues=("swap-product", "swap-fact")),
         knowledge_base=_base(ATTESTED),
     )
 
@@ -250,12 +256,12 @@ def test_the_order_the_catalogues_are_named_in_does_not_change_the_set_s_address
 
     forwards = generate_for(
         store,
-        _request("run-order-1", kb_ref=GROUNDED_KB, catalogues=("order-a", "order-b")),
+        _request("run-order-1", brain=GROUNDED_KB, catalogues=("order-a", "order-b")),
         knowledge_base=_base(ATTESTED),
     )
     backwards = generate_for(
         store,
-        _request("run-order-2", kb_ref=GROUNDED_KB, catalogues=("order-b", "order-a")),
+        _request("run-order-2", brain=GROUNDED_KB, catalogues=("order-b", "order-a")),
         knowledge_base=_base(ATTESTED),
     )
 
@@ -284,12 +290,9 @@ def test_catalogues_that_disagree_on_the_contract_are_refused(
             }
         )
     )
-    other = Bundle(
-        catalogue=bundle.catalogue,
-        contract=revised,
-        needs_base=bundle.needs_base,
-        delivery=bundle.delivery,
-    )
+    from redteam_contracts.contract import as_raw
+
+    other = Bundle(bundle.document.model_copy(update={"contract": as_raw(revised)}))
     _publish(store, "other", other)
 
     with pytest.raises(contract_store.ContractMismatch):
@@ -297,9 +300,23 @@ def test_catalogues_that_disagree_on_the_contract_are_refused(
     assert existing_report(store, "run-mismatch") is None, "a refused run pins nothing"
 
 
-def test_a_grounded_request_with_nothing_to_pull_through_is_refused() -> None:
+def test_a_grounded_request_with_nothing_to_pull_through_is_refused(
+    store: MemoryObjectStore,
+) -> None:
     with pytest.raises(ValueError, match="registry client"):
-        generate_for(MemoryObjectStore(), _request("run-x", kb_ref=GROUNDED_KB))
+        generate_for(store, _request("run-x", brain=GROUNDED_KB))
+
+
+def test_a_supplied_brain_is_not_pulled_when_the_selection_does_not_need_it(
+    store: MemoryObjectStore,
+) -> None:
+    report = generate_for(
+        store,
+        _request("run-unused-brain", brain=GROUNDED_KB, strategies=BRAINLESS),
+    )
+
+    assert report.grounded is False
+    assert report.brain_digest is None
 
 
 def test_failures_are_classified_by_what_the_reader_can_do_about_them() -> None:

@@ -74,6 +74,15 @@ class Ingredients:
 TransformBuilder = Callable[[Ingredients], Transform]
 
 
+@dataclass(frozen=True)
+class TransformDescriptor:
+    key: str
+    build: TransformBuilder
+    needs_generator: bool = False
+    needs_context: bool = False
+    needs_brain: bool = True
+
+
 class ContextRequired(ValueError):
     """A key needs the run's context or generator, and the spec declared neither.
 
@@ -89,30 +98,48 @@ class ContextRequired(ValueError):
         )
 
 
-_BUILDERS: dict[str, TransformBuilder] = {}
+_DESCRIPTORS: dict[str, TransformDescriptor] = {}
 
 
-def register(key: str, build: TransformBuilder) -> None:
+def register(
+    key: str,
+    build: TransformBuilder,
+    *,
+    needs_generator: bool = False,
+    needs_context: bool = False,
+    needs_brain: bool = True,
+) -> None:
     """Bind a builder to the string a `StrategySpec.transform` may name.
 
     Registering the same builder twice is a no-op -- this is module state and the wiring is
     imported more than once per process. A *different* builder under a name already taken is
     refused, because that is the mistake worth catching.
     """
-    existing = _BUILDERS.get(key)
+    declared = TransformDescriptor(
+        key=key,
+        build=build,
+        needs_generator=needs_generator,
+        needs_context=needs_context,
+        needs_brain=needs_brain,
+    )
+    existing = _DESCRIPTORS.get(key)
     if existing is not None:
-        if existing is build:
+        if existing == declared:
             return
         raise ValueError(
             f"the construction key {key!r} already has a builder; exactly one per key, or a probe "
             f"set names a construction and cannot say which one produced it"
         )
-    _BUILDERS[key] = build
+    _DESCRIPTORS[key] = declared
 
 
 def registered() -> tuple[str, ...]:
     """Every key a catalogue may name beyond gaussia's four."""
-    return tuple(sorted(_BUILDERS))
+    return tuple(sorted(_DESCRIPTORS))
+
+
+def descriptor(key: str) -> TransformDescriptor | None:
+    return _DESCRIPTORS.get(key)
 
 
 MODEL_DRIVEN: frozenset[str] = frozenset({CONTEXTUAL_SIBLING})
@@ -124,7 +151,8 @@ request to the generator."""
 
 def needs_model(key: str) -> bool:
     """Whether a construction key needs the run's generator and context to be built."""
-    return key in MODEL_DRIVEN
+    found = descriptor(key)
+    return bool(found and found.needs_generator)
 
 
 def build_transforms(keys: Iterable[str], ingredients: Ingredients) -> tuple[Transform, ...]:
@@ -143,7 +171,11 @@ def build_transforms(keys: Iterable[str], ingredients: Ingredients) -> tuple[Tra
     Raises:
         ContextRequired: A named construction needs context or a model the spec did not declare.
     """
-    return tuple(_BUILDERS[key](ingredients) for key in sorted(set(keys)) if key in _BUILDERS)
+    return tuple(
+        _DESCRIPTORS[key].build(ingredients)
+        for key in sorted(set(keys))
+        if key in _DESCRIPTORS
+    )
 
 
 def unresolved(transforms: Sequence[Transform]) -> dict[str, tuple[str, ...]]:
@@ -223,4 +255,9 @@ def _contextual_sibling(ingredients: Ingredients) -> Transform:
 register(SWAP_TOKEN, _swap_token)
 register(SHIFT_FIGURE, _shift_figure)
 register(SHIFT_DATE, _shift_date)
-register(CONTEXTUAL_SIBLING, _contextual_sibling)
+register(
+    CONTEXTUAL_SIBLING,
+    _contextual_sibling,
+    needs_generator=True,
+    needs_context=True,
+)
