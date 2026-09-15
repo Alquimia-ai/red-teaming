@@ -96,4 +96,12 @@ helm upgrade --install red-teaming "$ROOT/deploy/charts/red-teaming-stack" \
 
 node_ip="$(kubectl get node -o jsonpath='{.items[0].status.addresses[?(@.type=="InternalIP")].address}')"
 say "done: the API answers at http://${node_ip}:30880/healthz"
-echo "from a workstation: redteam init --api-url http://${node_ip}:30880"
+cat <<NEXT
+
+from a workstation (or here; it needs Python 3.12 and nothing else):
+  curl -fsSL https://raw.githubusercontent.com/Alquimia-ai/red-teaming/main/install.sh | sh
+  redteam init --api-url http://${node_ip}:30880
+
+then publish the engagement -- this installation carries no catalogue of its own:
+  redteam catalogue publish my-catalogue.yaml
+NEXT

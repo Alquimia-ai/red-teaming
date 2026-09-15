@@ -17,7 +17,6 @@ creates through the cluster's own API server.
 | Secret | `red-teaming-store-creds` | `REDTEAM_S3_ACCESS_KEY`/`SECRET_KEY`, read whole by the API, every runner and MinIO; absent when the pods' identity reaches the store |
 | Secret | `red-teaming-runner-secrets` | every key a run may name by `secret_ref`; created by the chart only when `runner.secrets` is set, otherwise managed out of band (SOPS, an external secrets operator) |
 | Deployment, PVC, Services, Job | `red-teaming-minio*` | the store on the appliance (`minio.enabled`); the volume is kept across uninstall |
-| ConfigMap, Job (hook) | `red-teaming-seed` | publishes the bundles and the prior once the API answers; a hook, idempotent |
 | Deployment, Service | `red-teaming-receiver` | optional, off by default |
 
 ## How a run becomes a Job
@@ -52,7 +51,7 @@ one that is gone while the store says the attack was under way reads as `stalled
 
 | Value | Default | |
 |---|---|---|
-| `images.api`, `images.runner` | `ghcr.io/alquimia-ai/red-teaming-*:latest` | pin a release outside a lab |
+| `images.api`, `images.runner` | `ghcr.io/alquimia-ai/red-teaming-*:latest` | pin a release outside a lab; `deploy/appliance/values-appliance.yaml` does |
 | `images.pullSecret` | `""` | a `dockerconfigjson` Secret for ghcr.io; the packages of a private repository need one |
 | `api.service.type` / `nodePort` | `NodePort` / `30880` | the appliance's door |
 | `api.ingress.*` | disabled | the cloud's |
@@ -74,6 +73,10 @@ helm upgrade --install red-teaming deploy/charts/red-teaming-stack \
 
 `helm lint` and `helm template` with the appliance's and both clouds' values run in CI, and
 `tests/guards/test_charts.py` checks what is rendered against what the dispatcher expects.
+
+The chart installs no catalogue and runs no seed (ADR-014): an installation publishes its own
+engagement with `redteam catalogue publish`, and an upgrade from a chart that seeded removes the
+`red-teaming-seed` ConfigMap it left behind. What was published is in the store, not in the release.
 
 ## Resuming a terminal Job
 

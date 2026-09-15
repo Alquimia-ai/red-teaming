@@ -22,12 +22,25 @@ reasoning behind it.
   spec's decision; the chart serves what the catalog names.
 - **The MinIO volume outlives everything.** `helm.sh/resource-policy: keep` on the claim: the store
   is the evidence, and an upgrade or an uninstall must not be able to take it.
+- **Nothing business-shaped ships with the platform.** The chart carries no catalogue and runs no
+  seed ([ADR-014](../adr/014-catalogues-embed-strategy-execution-and-brain-requirements.md)): an
+  installation publishes its own engagement. A contract that arrived with an install is a contract
+  nobody agreed to, and it would read in the manifest exactly like one somebody did.
+- **Pinned images, deliberate upgrades.** `values-appliance.yaml` names a release for both the API
+  and the runner. `latest` would move an appliance under a run that was frozen against what was
+  there yesterday.
+- **The command line is not installed from this checkout.** It comes from its own `cli-v*` release,
+  by `curl ... | sh`, and updates in place
+  ([ADR-013](../adr/013-the-command-line-is-released-installed-and-updated-as-one-file.md)): the
+  operators who drive an appliance are not the people who clone it.
 
 ## What the operator does
 
 ```bash
 sudo deploy/appliance/install.sh          # idempotent: k3s, device plugin, secrets, models, platform
+curl -fsSL https://raw.githubusercontent.com/Alquimia-ai/red-teaming/main/install.sh | sh
 redteam init --api-url http://<ip>:30880
+redteam catalogue publish my-catalogue.yaml   # the engagement; the appliance starts with none
 ```
 
 See [`../../deploy/appliance/README.md`](../../deploy/appliance/README.md) for prerequisites, the

@@ -25,7 +25,7 @@ over the network -- and so, when a run declares one, is the brain registry.
 | Network in | 30880 (API), 30901 (MinIO console) from operators' workstations |
 | Network out | the assistant under test; the brain registry when runs declare a knowledge base; `ghcr.io` to pull the packages unless they were loaded from media |
 
-## Install
+## 1. Install the platform
 
 ```bash
 git clone https://github.com/Alquimia-ai/red-teaming && cd red-teaming
@@ -40,23 +40,77 @@ chart with the catalog entries `MODELS` names on the hardware `HARDWARE` names, 
 platform chart. Run it again for an upgrade: every step is idempotent, and the MinIO volume is kept
 (`helm.sh/resource-policy: keep`) even across `helm uninstall`.
 
-Pin the images on an appliance (`values-appliance.yaml`, `images.api`/`images.runner`) to a
-release; `latest` is for a lab.
+`values-appliance.yaml` pins `images.api` and `images.runner` to a release. Keep it that way: an
+appliance is upgraded on purpose, and `latest` is for a lab.
 
-## Then
+## 2. Install the command line
+
+On the workstation that drives the appliance -- or on the node itself; it needs Python 3.12 and
+nothing else:
 
 ```bash
+curl -fsSL https://raw.githubusercontent.com/Alquimia-ai/red-teaming/main/install.sh | sh
+export PATH="$HOME/.local/bin:$PATH"
+redteam --version                                  # later: redteam update [--check]
 redteam init --api-url http://<appliance-ip>:30880
-redteam catalogue list                 # what the seed published
-redteam run start spec.json --follow
 ```
+
+The installer resolves the newest `cli-v*` release, checks the download against the checksum the
+release published, and installs one file. Keep it within a minor of the API it talks to: the gate
+refuses a spec it does not understand rather than guessing.
+
+## 3. Publish a catalogue
+
+**The appliance starts empty.** The chart carries no catalogue and runs no seed hook (ADR-014): a
+production installation publishes its own engagement, and nothing business-shaped is implied by an
+install. A catalogue is one schema-version-2 document -- the contract, the plugins and the
+strategies, each declaring `requires_brain` and one interaction mode:
+
+```bash
+redteam catalogue validate my-catalogue.yaml       # every check publishing runs; writes nothing
+redteam catalogue publish my-catalogue.yaml        # the next version, by the name inside it
+redteam catalogue list                             # what this appliance has
+redteam prior publish general-support prior.json   # only if a run names `realism_prior`
+```
+
+`deploy/seed/catalogues/*.json` are the local stack's fixtures and read as a worked example;
+[`docs/architecture/catalogue.md`](../../docs/architecture/catalogue.md) is the grammar, and the
+`/catalogue` skill authors one.
+
+## 4. A run
 
 A spec on the appliance points its roles at the cluster's own endpoints:
 
 ```json
 "judge":    {"model": "qwen3-8b", "provider": "openai_compatible", "endpoint": "http://judge.red-teaming.svc:8000/v1", "secret_ref": "VLLM_API_KEY", "self_hosted": true},
-"embedder": {"model": "qwen3-embedding-0.6b", "provider": "openai_compatible", "endpoint": "http://embedder.red-teaming.svc:8000/v1/embeddings", "secret_ref": "VLLM_API_KEY", "self_hosted": true}
+"embedder": {"model": "qwen3-embedding-0.6b", "provider": "openai_compatible", "endpoint": "http://embedder.red-teaming.svc:8000/v1/embeddings", "secret_ref": "VLLM_API_KEY", "self_hosted": true},
+"brain":    {"registry": "registry.example.com", "repository": "brains/support", "digest": "sha256:<64 hex>"}
 ```
+
+```bash
+redteam run start spec.json --follow
+redteam run result <run_id>
+```
+
+`brain` is the whole reference, pinned by digest -- there is no `kb_ref` any more. Leave it out for
+a run whose selected strategies all stand on their own; a run that selects one declaring
+`requires_brain` without it is refused at the gate. When it is present, the runner pulls once and
+hands the brain only to the strategies that asked for it, which is why a mixed catalogue no longer
+has to choose.
+
+## Upgrading
+
+```bash
+git pull                                           # the charts and the values live here
+$EDITOR deploy/appliance/values-appliance.yaml     # images.api and images.runner -> the new release
+sudo deploy/appliance/install.sh                   # both charts, idempotent
+redteam update                                     # the command line, on the workstation
+```
+
+Published catalogues, priors and every run's evidence are in MinIO and survive all of it. Two things
+a release can refuse afterwards, both on purpose: a catalogue document without `schema_version: 2`,
+and an unfinished run frozen before the upgrade -- start it again under a new id rather than
+resuming it across a breaking change.
 
 ## Operating
 
