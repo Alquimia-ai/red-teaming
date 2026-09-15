@@ -17,9 +17,7 @@ CATALOGUES = frozenset({"baseline"})
 def _spec(**overrides: object) -> RunSpec:
     base: dict[str, object] = {
         "run_id": "run-1",
-        "brain": BrainRef(
-            registry="ghcr.io", repository="acme/kb", digest="sha256:" + "a" * 64
-        ),
+        "brain": BrainRef(registry="ghcr.io", repository="acme/kb", digest="sha256:" + "a" * 64),
         "catalogues": ("baseline",),
         "plugins": (),
         "strategies": (),

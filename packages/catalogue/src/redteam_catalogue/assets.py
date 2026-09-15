@@ -54,9 +54,7 @@ def load_document(store: ObjectStore, name: str, version: int | None = None) -> 
         raise CatalogueNotFound(f"{name} v{resolved}") from missing
     document = CatalogueDocument.model_validate_json(raw)
     if document.name != name:
-        raise ValueError(
-            f"catalogue key {name!r} contains a document named {document.name!r}"
-        )
+        raise ValueError(f"catalogue key {name!r} contains a document named {document.name!r}")
     return document
 
 

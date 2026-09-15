@@ -172,9 +172,7 @@ def build_transforms(keys: Iterable[str], ingredients: Ingredients) -> tuple[Tra
         ContextRequired: A named construction needs context or a model the spec did not declare.
     """
     return tuple(
-        _DESCRIPTORS[key].build(ingredients)
-        for key in sorted(set(keys))
-        if key in _DESCRIPTORS
+        _DESCRIPTORS[key].build(ingredients) for key in sorted(set(keys)) if key in _DESCRIPTORS
     )
 
 
