@@ -1,12 +1,16 @@
 # The appliance: one node, k3s, one GPU, MinIO on the node's disk, the API on a NodePort. This is
 # the chart's default shape stated explicitly, plus the two things an appliance always has -- a
-# private package registry to pull from, and the runs' credentials managed with SOPS rather than in
+# registry to pull the packages from, and the runs' credentials managed with SOPS rather than in
 # values.
 images:
+  # A release, not `latest`: an appliance is upgraded on purpose. The two move together -- the API
+  # freezes a spec the runner reads -- so bump the pair and run `install.sh` again.
+  api: ghcr.io/alquimia-ai/red-teaming-api:0.2.0
+  runner: ghcr.io/alquimia-ai/red-teaming-runner:0.2.0
+  # The packages are public; this is here for an appliance that pulls from a private mirror, or
+  # from ghcr while a repository is private. Empty it and leave `registry-pull.enc.yaml` out when
+  # the pull is anonymous.
   pullSecret: red-teaming-registry
-  # Pin a release on the appliance; `latest` is for a lab.
-  # api: ghcr.io/alquimia-ai/red-teaming-api:0.1.0
-  # runner: ghcr.io/alquimia-ai/red-teaming-runner:0.1.0
 
 api:
   service:
@@ -27,5 +31,7 @@ minio:
     nodePort: 30901
 
 brainRegistry:
+  # Resolved only when a selected strategy declares `requires_brain` (ADR-014); a run of independent
+  # strategies alone never reaches the registry.
   secretRef: BRAIN_REGISTRY_CREDENTIALS
   insecure: false
