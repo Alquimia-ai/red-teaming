@@ -2,8 +2,7 @@ apiVersion: v2
 name: red-teaming-stack
 description: >-
   The red-teaming platform on Kubernetes: the API that accepts runs and launches one Job per run,
-  the object store the evidence lives in, the seed that publishes the catalogue bundles, and the
-  wiring a runner's Job is created with.
+  the object store the evidence lives in and the wiring a runner's Job is created with.
 type: application
 version: 0.1.0
 appVersion: "latest"

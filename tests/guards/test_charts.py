@@ -1,15 +1,13 @@
-"""Guard: the charts render, and what they render is what the dispatcher and the seed expect.
+"""Guard: the charts render, and what they render is what the dispatcher expects.
 
 The API creates a run's Job with a service account, a Secret, a ConfigMap and a store Secret it is
-told the names of; the chart is what tells it. The two are held together here, along with the seed
-the chart carries -- a copy of `deploy/seed`, because a chart can only read its own files -- and
-the RBAC the dispatcher's verbs need. `helm` is not a Python dependency: without it on the PATH the
-rendering tests skip, and CI installs it.
+told the names of; the chart is what tells it. The two are held together here, along with the RBAC
+the dispatcher's verbs need. `helm` is not a Python dependency: without it on the PATH the rendering
+tests skip, and CI installs it.
 """
 
 from __future__ import annotations
 
-import filecmp
 import json
 import shutil
 import subprocess
@@ -46,23 +44,6 @@ def _one(docs: list[dict[str, object]], kind: str, name: str) -> dict[str, objec
     found = [d for d in docs if d.get("kind") == kind and d["metadata"]["name"] == name]  # type: ignore[index]
     assert len(found) == 1, f"{kind}/{name}: {len(found)} rendered"
     return found[0]
-
-
-def test_the_seed_the_chart_carries_is_the_seed() -> None:
-    """A chart reads only its own files, so `files/seed` is a copy of `deploy/seed`; this is what
-    keeps the copy honest."""
-    source = ROOT / "deploy" / "seed"
-    carried = STACK / "files" / "seed"
-    for path in sorted(source.rglob("*")):
-        if path.is_dir() or path.name.startswith("."):
-            continue
-        twin = carried / path.relative_to(source)
-        where = twin.relative_to(ROOT)
-        assert twin.is_file(), f"{where} is missing; copy deploy/seed into the chart"
-        assert filecmp.cmp(path, twin, shallow=False), f"{where} differs from the seed"
-    for path in sorted(carried.rglob("*")):
-        if path.is_file():
-            assert (source / path.relative_to(carried)).is_file(), f"{path} has no source"
 
 
 @needs_helm
@@ -115,9 +96,11 @@ def test_the_appliance_values_render_a_nodeport_and_a_kept_volume() -> None:
     assert not [d for d in docs if d.get("kind") == "Ingress"]
     config = _one(docs, "ConfigMap", "red-teaming-api-config")["data"]
     assert config["REDTEAM_K8S_IMAGE_PULL_SECRET"] == "red-teaming-registry"  # type: ignore[index]
-    seed = _one(docs, "ConfigMap", "red-teaming-seed")["data"]
-    assert isinstance(seed, dict)
-    assert "catalogues__assistant-baseline__catalogue.json" in seed and "seed.py" in seed
+    assert not [
+        d
+        for d in docs
+        if d["metadata"]["name"] == "red-teaming-seed"  # type: ignore[index]
+    ]
 
 
 @needs_helm
