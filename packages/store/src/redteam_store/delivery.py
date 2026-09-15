@@ -64,6 +64,9 @@ class Turns(StrEnum):
     MANY = "many"
     """The probe's query opens a conversation an attacker steers toward the plugin's objective."""
 
+    SCRIPTED = "scripted"
+    """A fixed list of user messages sent in one target session."""
+
 
 @dataclass(frozen=True)
 class Delivery:
@@ -79,7 +82,11 @@ class Delivery:
 
     @property
     def conducted(self) -> bool:
-        return self.turns is Turns.MANY
+        return self.turns is not Turns.ONE
+
+    @property
+    def scripted(self) -> bool:
+        return self.turns is Turns.SCRIPTED
 
 
 STATIC = Delivery()
@@ -153,6 +160,11 @@ def _one(identifier: str, declared: Mapping[str, Any]) -> Delivery:
                 f"nothing would use; drop them, or declare turns='many'"
             )
         return STATIC
+    if turns is Turns.SCRIPTED:
+        raise ValueError(
+            f"delivery for {identifier!r} declares turns='scripted'; fixed scripts belong in the "
+            "catalogue v2 interaction and cannot be represented by a legacy delivery sidecar"
+        )
     named = str(attacker).strip() if attacker is not None else ""
     if not named:
         raise ValueError(
@@ -195,6 +207,27 @@ def load(store: ObjectStore, name: str, version: int) -> dict[str, Delivery]:
     delivered as one turn.
     """
     try:
+        catalogue = json.loads(store.get(layout.catalogue(name, version)))
+    except ObjectNotFound:
+        catalogue = {}
+    if catalogue.get("schema_version") == 2:
+        found: dict[str, Delivery] = {}
+        for strategy in catalogue.get("strategies", ()):
+            interaction = strategy.get("interaction", {})
+            mode = interaction.get("mode")
+            if mode == "scripted_multi_turn":
+                found[str(strategy["id"])] = Delivery(
+                    turns=Turns.SCRIPTED,
+                    max_turns=len(interaction.get("messages", ())),
+                )
+            elif mode == "adaptive_multi_turn":
+                found[str(strategy["id"])] = Delivery(
+                    turns=Turns.MANY,
+                    attacker=str(interaction["attacker"]),
+                    max_turns=int(interaction["max_turns"]),
+                )
+        return found
+    try:
         raw = store.get(layout.catalogue_delivery(name, version))
     except ObjectNotFound:
         return {}
@@ -233,6 +266,8 @@ def merged(store: ObjectStore, versions: Mapping[str, int]) -> dict[str, Deliver
 def _spelled(delivery: Delivery) -> str:
     if not delivery.conducted:
         return "one turn"
+    if delivery.scripted:
+        return f"{delivery.max_turns} scripted turns"
     return f"{delivery.max_turns} turns through {delivery.attacker!r}"
 
 

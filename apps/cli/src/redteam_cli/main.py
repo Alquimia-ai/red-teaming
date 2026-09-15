@@ -2,7 +2,7 @@
 
     redteam init [--api-url] [--receiver-url]      the workspace: .redteam/
     redteam local up [--build] | down | status | logs [service] [-f]
-    redteam catalogue validate <dir> | publish <name> <dir> | list
+    redteam catalogue validate <file> | publish <file> | list
     redteam prior publish <name> <file>
     redteam run validate <spec> | start <spec> [--follow] [--deadline] | status <id> |
                 result <id> | list | resume <id>
@@ -129,33 +129,32 @@ def cmd_local_logs(args: argparse.Namespace, ctx: Context) -> int:
 # ---- catalogues and priors ----------------------------------------------------------------------
 
 
-def _bundle_body(directory: Path, name: str) -> dict[str, Any]:
+def _bundle_body(path: Path) -> dict[str, Any]:
     try:
-        return bundle.read_bundle(directory, name)
+        return bundle.read_bundle(path)
     except (bundle.BundleIncomplete, ValueError) as malformed:
         raise Exit(REFUSED, str(malformed)) from malformed
 
 
 def cmd_catalogue_validate(args: argparse.Namespace, ctx: Context) -> int:
-    body = _bundle_body(args.directory, args.directory.name)
+    body = _bundle_body(args.file)
     checked = ctx.asking(lambda: ctx.api().validate_bundle(body))
     if ctx.as_json:
         ctx.show(checked)
         return OK
-    table = Table(title=f"{args.directory.name}: every check passed", show_header=False)
+    table = Table(title=f"{body['name']}: every check passed", show_header=False)
     table.add_row("principles", str(checked.get("principles")))
     table.add_row("strategies", str(checked.get("strategies")))
-    table.add_row("needs a base", ", ".join(checked.get("needs_base") or ()) or "-")
-    table.add_row("conducted", ", ".join(checked.get("delivered") or ()) or "-")
+    table.add_row("requires brain", ", ".join(checked.get("requires_brain") or ()) or "-")
     ctx.out.print(table)
     return OK
 
 
 def cmd_catalogue_publish(args: argparse.Namespace, ctx: Context) -> int:
     ws = ctx.ws()
-    body = _bundle_body(args.directory, args.name)
+    body = _bundle_body(args.file)
     published = ctx.asking(lambda: ctx.api().publish_bundle(body))
-    kept = ws.catalogues / args.name
+    kept = ws.catalogues / str(body["name"])
     kept.mkdir(parents=True, exist_ok=True)
     (kept / "published.json").write_text(json.dumps(published, indent=2, sort_keys=True) + "\n")
     if ctx.as_json:
@@ -163,7 +162,7 @@ def cmd_catalogue_publish(args: argparse.Namespace, ctx: Context) -> int:
         return OK
     verb = "published" if published.get("created") else "already published"
     ctx.out.print(
-        f"[bold]{args.name}[/bold]: {verb} as version [bold]{published['version']}[/bold] "
+        f"[bold]{body['name']}[/bold]: {verb} as version [bold]{published['version']}[/bold] "
         f"[dim]({kept / 'published.json'})[/dim]"
     )
     return OK
@@ -547,11 +546,10 @@ def build_parser() -> argparse.ArgumentParser:
         dest="catalogue_command", metavar="action", required=True
     )
     validate = catalogue_commands.add_parser("validate", help="every check publishing runs")
-    validate.add_argument("directory", type=Path)
+    validate.add_argument("file", type=Path)
     validate.set_defaults(handler=cmd_catalogue_validate)
     publish = catalogue_commands.add_parser("publish", help="the next version of a bundle")
-    publish.add_argument("name")
-    publish.add_argument("directory", type=Path)
+    publish.add_argument("file", type=Path)
     publish.set_defaults(handler=cmd_catalogue_publish)
     catalogue_commands.add_parser("list", help="every published bundle").set_defaults(
         handler=cmd_catalogue_list

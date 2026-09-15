@@ -158,3 +158,21 @@ Legacy incomplete runs without trustworthy consumed allowance, required provenan
 pinned prior must retain their evidence and start under a new id. Existing manifests remain
 readable. Do not roll an old writer back onto runs or reservations written by the new code; keep
 the last compatible artifact versions pinned and publish a corrective patch if needed.
+
+## Catalogue v2 and conditional brain delivery
+
+Deliver the catalogue-v2 change through three ordered implementation pull requests:
+
+| Pull request | Scope | Exit condition |
+|---|---|---|
+| Contract and runtime | The single catalogue document, `RunSpec.brain`, strategy brain requirements, transform descriptors and the three interaction modes | Contract, API, runner, probe and engine tests pass together |
+| Packaging and operations | Schema-v2 seed documents, local seeding and removal of production Helm auto-seeding | Compose keeps its local fixtures and the production chart renders no seed Job |
+| Adoption and release | ADR-014, operator and architecture documentation, upgrade notes | ADR validation passes and every example uses the v2 file grammar |
+
+Merge them in order into `develop`, then promote `develop` to `main`. This is a coordinated
+breaking release because old run specs and old catalogue documents are deliberately rejected.
+Release-please determines the exact versions from repository history; expect a minor bump for API,
+runner and CLI while they remain below 1.0. The release notes must call out the `kb_ref` to `brain`
+field change, the one-file catalogue format, exact language matching and the removal of production
+auto-seeding. Verify the API and runner image digests and every CLI archive checksum before marking
+the release complete.

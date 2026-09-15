@@ -212,9 +212,9 @@ def test_a_brain_reference_carries_the_registry_it_lives_in() -> None:
     """`repository` alone is not addressable: handed to ORAS it defaults to Docker Hub, which
     answers a login page rather than a 404 -- so the failure would read "the registry answered with
     text/html" and name the wrong registry."""
-    from redteam_contracts.kb import KnowledgeRef
+    from redteam_contracts.kb import BrainRef
 
-    ref = KnowledgeRef(
+    ref = BrainRef(
         registry="ghcr.io", repository="alquimia-ai/assistant-brain", digest="sha256:" + "a" * 64
     )
 

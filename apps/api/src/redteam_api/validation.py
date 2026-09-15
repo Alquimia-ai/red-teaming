@@ -51,18 +51,19 @@ def validate(
     known_catalogues: frozenset[str],
     attackers_named: frozenset[str] = frozenset(),
     model_driven: frozenset[str] = frozenset(),
+    brain_required: frozenset[str] = frozenset(),
 ) -> None:
     """Every check. Raises `ValidationFailure` naming the first one that failed.
 
     Args:
         known_catalogues: The names the store carries at least one version of.
-        attackers_named: The attacker ids the strategies this run will generate are delivered
-            through, per the catalogues' delivery sidecars at the frozen versions.
+        attackers_named: The attacker ids selected adaptive strategies declare.
         model_driven: The construction keys the run's effective selection names that need the
             run's generator and context to be built.
     """
     _check_run_id(spec)
     _check_knowledge_base(spec)
+    _check_required_brain(spec, brain_required)
     _check_catalogues(spec, known_catalogues)
     _check_attackers_bound(spec, attackers_named)
     _check_constructions_have_what_they_need(spec, model_driven)
@@ -84,12 +85,21 @@ def _check_run_id(spec: RunSpec) -> None:
 def _check_knowledge_base(spec: RunSpec) -> None:
     """Pinned by digest. A tag moves like a git branch, and longitudinal validity needs an oracle
     nobody can move out from under a finished run."""
-    if spec.kb_ref is None:
+    if spec.brain is None:
         return
-    if not spec.kb_ref.digest.startswith("sha256:"):
+    if not spec.brain.digest.startswith("sha256:"):
         raise ValidationFailure(
-            f"kb_ref must be pinned by digest, got {spec.kb_ref.digest!r}. A tag moves, and a run "
+            f"brain must be pinned by digest, got {spec.brain.digest!r}. A tag moves, and a run "
             f"whose oracle can move cannot be compared with anything later."
+        )
+
+
+def _check_required_brain(spec: RunSpec, strategies: frozenset[str]) -> None:
+    if strategies and spec.brain is None:
+        raise ValidationFailure(
+            f"the selected strategies {sorted(strategies)} require a brain, and the run declares "
+            "none. Attach a digest-pinned `brain`, or narrow the selection to strategies that "
+            "declare `requires_brain: false`."
         )
 
 
@@ -107,10 +117,10 @@ def _check_catalogues(spec: RunSpec, known: frozenset[str]) -> None:
 def _check_attackers_bound(spec: RunSpec, named: frozenset[str]) -> None:
     """Every attacker the run's catalogues will conduct with is a model the spec binds.
 
-    A delivery sidecar names an attacker by id and the spec binds the id to a model. With free-form
-    ids a typo is otherwise silent: the runner would reach the first conducted unit, find no model
-    under the name, and die after the assistant had been attacked for every static unit before it.
-    Refused here instead, by name, before anything is written.
+    An adaptive interaction names an attacker by id and the spec binds the id to a model. With
+    free-form ids a typo is otherwise silent: the runner would reach the first conducted unit,
+    find no model under the name, and die after the assistant had been attacked for every static
+    unit before it. Refused here instead, by name, before anything is written.
     """
     unbound = sorted(named - set(spec.attackers))
     if unbound:

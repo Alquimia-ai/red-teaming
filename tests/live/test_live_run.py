@@ -35,7 +35,6 @@ def _live() -> dict[str, str]:
 def test_a_real_assistant_is_profiled_by_a_real_judge(capsys: pytest.CaptureFixture[str]) -> None:
     from redteam_catalogue import assets
     from redteam_catalogue.bundle import load_bundle
-    from redteam_catalogue.engines import declared_engines
     from redteam_contracts.manifest import Manifest, RunPhase
     from redteam_runner import pipeline
     from redteam_secrets.resolver import EnvSecretResolver
@@ -46,15 +45,7 @@ def test_a_real_assistant_is_profiled_by_a_real_judge(capsys: pytest.CaptureFixt
     live = _live()
     store = MemoryObjectStore()
     bundle = load_bundle(BASELINE)
-    assets.publish(
-        store,
-        "assistant-baseline",
-        bundle.catalogue,
-        bundle.contract,
-        *declared_engines(bundle.entity_kinds),
-        needs_base=sorted(assets.needs_a_base(bundle.catalogue, bundle.needs_base)),
-        delivery=bundle.delivery,
-    )
+    assets.publish_document(store, bundle.document)
     judge: dict[str, Any] = {
         "model": live["LIVE_JUDGE_MODEL"],
         "provider": live["LIVE_JUDGE_PROVIDER"],
@@ -69,7 +60,7 @@ def test_a_real_assistant_is_profiled_by_a_real_judge(capsys: pytest.CaptureFixt
     run_id = "redteam-run-live"
     spec = {
         "run_id": run_id,
-        "kb_ref": None,
+        "brain": None,
         "catalogues": ["assistant-baseline"],
         "catalogue_versions": {"assistant-baseline": 1},
         "plugins": [],

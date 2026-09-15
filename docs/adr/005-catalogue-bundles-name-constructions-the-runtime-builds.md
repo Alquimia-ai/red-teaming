@@ -1,8 +1,10 @@
 # ADR-005: Catalogue bundles name constructions the runtime builds
 
-**Status:** Accepted
+**Status:** Superseded by ADR-014
 **Date:** 2026-09-10
 **Tags:** catalogue, probes, contracts
+
+Superseded by [ADR-014](./014-catalogues-embed-strategy-execution-and-brain-requirements.md).
 
 ## Context
 

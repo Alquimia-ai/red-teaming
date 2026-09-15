@@ -18,17 +18,8 @@ SIBLINGS = BASELINE.parent / "assistant-invented-siblings"
 
 
 def _bundle(directory: Path, name: str, **overrides: Any) -> dict[str, Any]:
-    body: dict[str, Any] = {
-        "name": name,
-        "catalogue": json.loads((directory / "catalogue.json").read_text()),
-        "contract": json.loads((directory / "contract.json").read_text()),
-    }
-    grounding = directory / "grounding.json"
-    if grounding.is_file():
-        body["needs_base"] = json.loads(grounding.read_text())["needs_base"]
-    delivery = directory / "delivery.json"
-    if delivery.is_file():
-        body["delivery"] = json.loads(delivery.read_text())
+    body: dict[str, Any] = json.loads(directory.with_suffix(".json").read_text())
+    body["name"] = name
     body.update(overrides)
     return body
 
@@ -47,7 +38,7 @@ def test_a_bundle_is_published_once_and_named_again(
     assert body["version"] == 1 and body["created"] is True
     assert body["contract_digest"].startswith("sha256:")
     assert body["principles"] == 7
-    assert store.exists(layout.catalogue_contract("siblings", 1))
+    assert not store.exists(layout.catalogue_contract("siblings", 1))
 
     assert client.get("/catalogues").json() == {CATALOGUE: [1], "siblings": [1]}
 
@@ -67,25 +58,23 @@ def test_validate_runs_every_check_and_writes_nothing(
     assert response.status_code == 200, response.text
     body = response.json()
     assert body["principles"] == 7 and body["strategies"] >= 2
-    assert "ask-about-invented-sibling" in body["needs_base"] or body["needs_base"]
+    assert "ask-about-plausible-sibling" in body["requires_brain"]
     assert not store.list_prefix(layout.catalogue_prefix("siblings"))
 
 
 def test_a_malformed_catalogue_is_a_400_and_a_failed_check_a_422(
     client: TestClient, store: MemoryObjectStore
 ) -> None:
-    malformed = client.post(
-        "/catalogues", json=_bundle(BASELINE, "broken", catalogue={"plugins": "nope"})
-    )
-    assert malformed.status_code == 400 and "catalogue.json" in malformed.json()["detail"]
+    malformed = client.post("/catalogues", json=_bundle(BASELINE, "broken", plugins="nope"))
+    assert malformed.status_code == 422
 
     bad_contract = client.post(
         "/catalogues", json=_bundle(BASELINE, "broken", contract={"version": "v1"})
     )
-    assert bad_contract.status_code == 400 and "contract.json" in bad_contract.json()["detail"]
+    assert bad_contract.status_code == 422
 
     dangling = _bundle(BASELINE, "broken")
-    dangling["catalogue"]["plugins"][0]["principle"] = "no_such_principle"
+    dangling["plugins"][0]["principle"] = "no_such_principle"
     refused = client.post("/catalogues", json=dangling)
     assert refused.status_code == 422
     refused_check = client.post("/catalogues:validate", json=dangling)
@@ -94,21 +83,21 @@ def test_a_malformed_catalogue_is_a_400_and_a_failed_check_a_422(
     assert not store.list_prefix(layout.catalogue_prefix("broken"))
 
 
-def test_the_grounding_a_phrasing_implies_is_derived_and_the_sidecar_adds_to_it(
+def test_brain_requirements_are_embedded_and_no_sidecar_is_written(
     client: TestClient, store: MemoryObjectStore
 ) -> None:
     """A phrasing carrying `{premise}` says it needs a base; the API reads that off the catalogue
     the way an author would, so `needs_base` only has to name the slotless strategies that want a
     premise appended. What was derived is answered back, so the author sees what was declared."""
-    derived = _bundle(BASELINE, "derived", needs_base=[])
+    derived = _bundle(BASELINE, "derived")
 
     checked = client.post("/catalogues:validate", json=derived).json()
     published = client.post("/catalogues", json=derived)
 
-    assert "ask-about-fake-product" in checked["needs_base"]
-    assert "ask-identity" not in checked["needs_base"]
+    assert "ask-about-fake-product" in checked["requires_brain"]
+    assert "ask-identity" not in checked["requires_brain"]
     assert published.status_code == 201, published.text
-    assert store.exists(layout.catalogue_grounding("derived", 1))
+    assert not store.exists(layout.catalogue_grounding("derived", 1))
 
 
 def test_priors_are_published_versioned_and_listed(client: TestClient) -> None:

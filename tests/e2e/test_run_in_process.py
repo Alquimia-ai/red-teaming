@@ -126,13 +126,7 @@ def platform(monkeypatch: pytest.MonkeyPatch) -> Iterator[tuple[TestClient, _Run
 
 
 def _publish_what_a_run_needs(client: TestClient) -> None:
-    body = {
-        "name": CATALOGUE,
-        "catalogue": json.loads((BASELINE / "catalogue.json").read_text()),
-        "contract": json.loads((BASELINE / "contract.json").read_text()),
-        "needs_base": json.loads((BASELINE / "grounding.json").read_text())["needs_base"],
-        "delivery": json.loads((BASELINE / "delivery.json").read_text()),
-    }
+    body = json.loads(BASELINE.with_suffix(".json").read_text())
     assert client.post("/catalogues", json=body).status_code == 201
     assert (
         client.post("/priors", json={"name": "support", "phrasings": ["hola"]}).status_code == 201
@@ -142,10 +136,16 @@ def _publish_what_a_run_needs(client: TestClient) -> None:
 def _spec(run_id: str = RUN, **overrides: Any) -> dict[str, Any]:
     base: dict[str, Any] = {
         "run_id": run_id,
-        "kb_ref": None,
+        "brain": None,
         "catalogues": [CATALOGUE],
         "plugins": [],
-        "strategies": [],
+        "strategies": [
+            "ask-identity",
+            "ask-system-prompt",
+            "escalate-system-prompt",
+            "act-for-another",
+            "refuse-escalation",
+        ],
         "connector": {
             "kind": "replay",
             "endpoint": "replay://assistant",
