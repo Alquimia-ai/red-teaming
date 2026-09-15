@@ -167,12 +167,12 @@ Deliver the catalogue-v2 change through three ordered implementation pull reques
 |---|---|---|
 | Contract and runtime | The single catalogue document, `RunSpec.brain`, strategy brain requirements, transform descriptors and the three interaction modes | Contract, API, runner, probe and engine tests pass together |
 | Packaging and operations | Schema-v2 seed documents, local seeding and removal of production Helm auto-seeding | Compose keeps its local fixtures and the production chart renders no seed Job |
-| Adoption and release | ADR-014, operator and architecture documentation, migration notes | ADR validation passes and every example uses the v2 file grammar |
+| Adoption and release | ADR-014, operator and architecture documentation, upgrade notes | ADR validation passes and every example uses the v2 file grammar |
 
 Merge them in order into `develop`, then promote `develop` to `main`. This is a coordinated
 breaking release because old run specs and old catalogue documents are deliberately rejected.
 Release-please determines the exact versions from repository history; expect a minor bump for API,
 runner and CLI while they remain below 1.0. The release notes must call out the `kb_ref` to `brain`
-migration, the one-file catalogue format, exact language matching and the removal of production
+field change, the one-file catalogue format, exact language matching and the removal of production
 auto-seeding. Verify the API and runner image digests and every CLI archive checksum before marking
 the release complete.
