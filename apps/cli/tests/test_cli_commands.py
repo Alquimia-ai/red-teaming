@@ -127,20 +127,22 @@ def test_catalogue_publish_sends_the_bundle_and_keeps_the_answer(
     api.answers[("POST", "/catalogues")] = (
         201,
         {
-            "name": "baseline",
+            "name": "assistant-baseline",
             "version": 3,
             "created": True,
             "delivered": ["escalate-system-prompt"],
         },
     )
 
-    assert run("catalogue", "publish", "baseline", str(BASELINE)) == OK
+    assert run("catalogue", "publish", str(BASELINE.with_suffix(".json"))) == OK
 
     [(method, path, body)] = api.requests
     assert (method, path) == ("POST", "/catalogues")
-    assert body["name"] == "baseline" and body["contract"]["version"] == "v1"
+    assert body["name"] == "assistant-baseline" and body["contract"]["version"] == "v1"
     assert "published as version 3" in run.stdout
-    kept = json.loads((cwd / ".redteam" / "catalogues" / "baseline" / "published.json").read_text())
+    kept = json.loads(
+        (cwd / ".redteam" / "catalogues" / "assistant-baseline" / "published.json").read_text()
+    )
     assert kept["version"] == 3
 
 
@@ -155,11 +157,11 @@ def test_catalogue_validate_renders_a_table_or_json(cwd: Path, api: _Api, run: _
         },
     )
 
-    assert run("catalogue", "validate", str(BASELINE)) == OK
+    assert run("catalogue", "validate", str(BASELINE.with_suffix(".json"))) == OK
     assert "every check passed" in run.stdout and "11" in run.stdout
 
     as_json = _Run()
-    assert as_json("--json", "catalogue", "validate", str(BASELINE)) == OK
+    assert as_json("--json", "catalogue", "validate", str(BASELINE.with_suffix(".json"))) == OK
     assert json.loads(as_json.stdout)["strategies"] == 11
 
 
@@ -173,7 +175,7 @@ def test_the_api_s_refusal_is_the_exit_and_its_words_are_the_output(
     cwd: Path, api: _Api, run: _Run
 ) -> None:
     api.answers[("POST", "/catalogues")] = (422, {"detail": "plugin charges no such principle"})
-    assert run("catalogue", "publish", "broken", str(BASELINE)) == REFUSED
+    assert run("catalogue", "publish", str(BASELINE.with_suffix(".json"))) == REFUSED
     assert "422" in run.stderr and "no such principle" in run.stderr
 
 

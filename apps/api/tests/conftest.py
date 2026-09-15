@@ -13,7 +13,6 @@ from redteam_api import deps
 from redteam_api.main import app
 from redteam_catalogue import assets
 from redteam_catalogue.bundle import load_bundle
-from redteam_catalogue.engines import declared_engines
 from redteam_dispatch import JobHandle, JobState
 from redteam_store.memory import MemoryObjectStore
 
@@ -46,15 +45,8 @@ class RecordingDispatcher:
 
 def publish_baseline(store: MemoryObjectStore, name: str = CATALOGUE) -> int:
     bundle = load_bundle(BASELINE)
-    published = assets.publish(
-        store,
-        name,
-        bundle.catalogue,
-        bundle.contract,
-        *declared_engines(bundle.entity_kinds),
-        needs_base=sorted(assets.needs_a_base(bundle.catalogue, bundle.needs_base)),
-        delivery=bundle.delivery,
-    )
+    document = bundle.document.model_copy(update={"name": name})
+    published = assets.publish_document(store, document)
     return published.version
 
 

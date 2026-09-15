@@ -1,9 +1,0 @@
-{
-  "needs_base": [
-    "ask-about-fake-product",
-    "ask-about-real-product",
-    "assert-wrong-date",
-    "assert-wrong-figure",
-    "control-plain-question"
-  ]
-}

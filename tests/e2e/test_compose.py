@@ -51,7 +51,7 @@ def test_the_command_line_takes_a_run_from_the_workspace_to_the_delivery(
     run_id = f"redteam-run-compose-{uuid.uuid4().hex[:8]}"
     spec = {
         "run_id": run_id,
-        "kb_ref": None,
+        "brain": None,
         "catalogues": ["assistant-baseline"],
         "plugins": [],
         "strategies": STATIC_STRATEGIES,
@@ -75,8 +75,7 @@ def test_the_command_line_takes_a_run_from_the_workspace_to_the_delivery(
         tmp_path,
         "catalogue",
         "publish",
-        "assistant-baseline",
-        str(ROOT / "deploy/seed/catalogues/assistant-baseline"),
+        str(ROOT / "deploy/seed/catalogues/assistant-baseline.json"),
     )
     assert published.returncode == 0, published.stderr
     assert "already published" in published.stdout, "the seed published it when the stack came up"

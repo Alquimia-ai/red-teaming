@@ -5,9 +5,10 @@ from __future__ import annotations
 import re
 
 import pytest
+from pydantic import ValidationError
 
 from redteam_api.validation import ValidationFailure, resolve_versions, validate
-from redteam_contracts.kb import KnowledgeRef
+from redteam_contracts.kb import BrainRef
 from redteam_contracts.run_spec import Budget, ConnectorSpec, ModelSpec, RunSpec
 
 CATALOGUES = frozenset({"baseline"})
@@ -16,9 +17,7 @@ CATALOGUES = frozenset({"baseline"})
 def _spec(**overrides: object) -> RunSpec:
     base: dict[str, object] = {
         "run_id": "run-1",
-        "kb_ref": KnowledgeRef(
-            registry="ghcr.io", repository="acme/kb", digest="sha256:" + "a" * 64
-        ),
+        "brain": BrainRef(registry="ghcr.io", repository="acme/kb", digest="sha256:" + "a" * 64),
         "catalogues": ("baseline",),
         "plugins": (),
         "strategies": (),
@@ -41,9 +40,8 @@ def test_a_run_id_outside_the_rule_is_refused_naming_the_rule(outside: str) -> N
 
 
 def test_a_tag_only_knowledge_base_is_refused() -> None:
-    loose = KnowledgeRef(registry="ghcr.io", repository="acme/kb", digest="v1")
-    with pytest.raises(ValidationFailure, match="pinned by digest"):
-        validate(_spec(kb_ref=loose), known_catalogues=CATALOGUES)
+    with pytest.raises(ValidationError, match="String should match pattern"):
+        BrainRef(registry="ghcr.io", repository="acme/kb", digest="v1")
 
 
 def test_an_unknown_catalogue_is_refused_and_the_published_ones_named() -> None:

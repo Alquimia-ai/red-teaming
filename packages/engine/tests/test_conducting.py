@@ -26,6 +26,7 @@ from redteam_engine.planned import (
     ENDED_BY_BUDGET,
     ENDED_BY_TARGET_FAILURE,
     MANY_TURNS,
+    SCRIPTED_TURNS,
     STATIC_TECHNIQUE,
     Conversation,
     PlannedDelivery,
@@ -303,6 +304,23 @@ def test_exchanges_past_the_plan_are_static_because_they_are_the_search_s() -> N
 
     assert recorded[1].technique == STATIC_TECHNIQUE
     assert len(target.calls) == 4, "three for the conversation, one for the search"
+
+
+def test_a_script_uses_one_session_and_is_recorded_as_one_conversation() -> None:
+    target = _Target()
+    scripted = PlannedDelivery(
+        delivery=Delivery(turns=Turns.SCRIPTED, max_turns=3),
+        objective=None,
+        script=("First", "Second", "Third"),
+    )
+    door, recorded = _door(target, [scripted], _Attacker())
+
+    final = door.send_planned("First", scripted, lambda q, r, c: recorded.append(c))
+
+    assert final.content == "re: Third"
+    assert target.calls == [("First", None), ("Second", "srv-1"), ("Third", "srv-1")]
+    [conversation] = recorded
+    assert conversation.technique == SCRIPTED_TURNS and conversation.depth == 3
 
 
 def test_an_attacker_the_plan_names_and_nobody_built_is_refused_not_worked_around() -> None:

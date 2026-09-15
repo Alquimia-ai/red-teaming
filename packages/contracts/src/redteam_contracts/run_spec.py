@@ -12,7 +12,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from redteam_contracts.kb import KnowledgeRef
+from redteam_contracts.kb import BrainRef
 from redteam_contracts.serving import ServingPath
 
 DEFAULT_MAX_RETRIES = 3
@@ -31,7 +31,7 @@ the two lists together.
 class ConnectorSpec(BaseModel):
     """How to reach the assistant under test, and what it is allowed to do while being attacked."""
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
     kind: str
     """Which target adapter reaches the assistant: `alquimia` for a live runtime, `replay` for
@@ -90,7 +90,7 @@ class ModelSpec(BaseModel):
     exposes logprobs and another does not.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
     model: str
     provider: str | None = None
@@ -153,7 +153,7 @@ class ProbeContext(BaseModel):
     one context is not the set another would have produced.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
     language: str
     """The language premises and questions are written in. A BCP-47 tag, `es-419` or `en`."""
@@ -180,7 +180,7 @@ class ExploitSpec(BaseModel):
     the configured components and refuses to run with a stranger's number.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
     tau: float = Field(ge=0.0, le=1.0)
     """The reproducible-failure score a category must reach to count."""
@@ -202,7 +202,7 @@ class Budget(BaseModel):
     """Where a run stops. The search decides how many target calls it wants; this decides how many
     it gets."""
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
     max_tokens: int | None = Field(default=None, gt=0)
     """Declared but refused at the gate: there is no honest token ledger to enforce it against."""
@@ -214,13 +214,13 @@ class Budget(BaseModel):
 class RunSpec(BaseModel):
     """What a consumer asked for, frozen."""
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
     run_id: str
-    kb_ref: KnowledgeRef | None = None
+    brain: BrainRef | None = None
     """Absent for a run that generates only the strategies which stand without a knowledge base."""
 
-    kb_subjects: tuple[str, ...] = ()
+    brain_subjects: tuple[str, ...] = ()
     """Which subjects of the brain are in scope. Empty is the whole brain.
 
     A scope is how a run measures one product line rather than a whole bank, and it does not weaken
@@ -284,7 +284,7 @@ class RunSpec(BaseModel):
     """
 
     attackers: dict[str, ModelSpec] = Field(default_factory=dict)
-    """Per attacker id a catalogue's delivery sidecar may name, the model that plays it.
+    """Per attacker id an adaptive strategy may name, the model that plays it.
 
     A catalogue declares that a strategy is delivered as a conversation and names who steers it by
     id; it never names a model, because a versioned asset naming one freezes the choice forever

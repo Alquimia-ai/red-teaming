@@ -28,7 +28,13 @@ from gaussia.schemas.roastme import Catalogue
 
 from redteam_catalogue.contract import validation_contract
 from redteam_catalogue.validate import validate
-from redteam_contracts.contract import ContractSpec, as_raw
+from redteam_contracts.catalogue import (
+    AdaptiveMultiTurn,
+    CatalogueDocument,
+    ScriptedMultiTurn,
+    SingleTurn,
+)
+from redteam_contracts.contract import ContractSpec, as_raw, parse_contract_spec
 from redteam_store import contract as contract_store
 from redteam_store import delivery as delivery_store
 from redteam_store import grounding as grounding_store
@@ -37,6 +43,124 @@ from redteam_store.interface import ObjectAlreadyExists, ObjectNotFound, ObjectS
 from redteam_store.versioned import CLAIM_ATTEMPTS
 
 FIRST_VERSION = 1
+
+
+def load_document(store: ObjectStore, name: str, version: int | None = None) -> CatalogueDocument:
+    """Load one schema-v2 catalogue document from its immutable object."""
+    resolved = latest(store, name) if version is None else version
+    try:
+        raw = store.get(layout.catalogue(name, resolved))
+    except ObjectNotFound as missing:
+        raise CatalogueNotFound(f"{name} v{resolved}") from missing
+    document = CatalogueDocument.model_validate_json(raw)
+    if document.name != name:
+        raise ValueError(f"catalogue key {name!r} contains a document named {document.name!r}")
+    return document
+
+
+def as_catalogue(document: CatalogueDocument, language: str | None = None) -> Catalogue:
+    """Resolve interaction text and adapt the portable document to the probe library schema."""
+    strategies: list[dict[str, Any]] = []
+    for strategy in document.strategies:
+        if language is None:
+            interaction = strategy.interaction
+            values = (
+                interaction.messages
+                if isinstance(interaction, ScriptedMultiTurn)
+                else (interaction.opening,)
+                if isinstance(interaction, AdaptiveMultiTurn)
+                else (interaction.prompt,)
+            )
+            first = values[0]
+            phrasing = first if isinstance(first, str) else next(iter(first.values()))
+        else:
+            phrasing = strategy.messages(language)[0]
+        strategies.append(
+            {
+                "id": strategy.id,
+                "name": strategy.name,
+                "description": strategy.description,
+                "plugin": strategy.plugin,
+                "entity_kind": strategy.entity_kind,
+                "transform": strategy.transform,
+                "doc": strategy.doc,
+                "phrasing_hint": phrasing,
+            }
+        )
+    return Catalogue.model_validate(
+        {
+            "plugins": [plugin.model_dump(mode="json") for plugin in document.plugins],
+            "strategies": strategies,
+        }
+    )
+
+
+def selected_document(
+    document: CatalogueDocument,
+    plugins: Sequence[str] = (),
+    strategies: Sequence[str] = (),
+) -> CatalogueDocument:
+    """Apply run selectors while retaining controls for the selected attacks."""
+    if not plugins and not strategies:
+        return document
+    wanted_plugins = frozenset(plugins)
+    wanted_strategies = frozenset(strategies)
+    attacks = tuple(
+        strategy
+        for strategy in document.strategies
+        if strategy.plugin is not None
+        and (
+            (not wanted_strategies or strategy.id in wanted_strategies)
+            and (not wanted_plugins or strategy.plugin in wanted_plugins)
+        )
+    )
+    if not attacks:
+        raise EmptySelection(
+            f"plugins={sorted(wanted_plugins)} strategies={sorted(wanted_strategies)} select no "
+            "strategy that attacks anything"
+        )
+    requirements = {strategy.requires_brain for strategy in attacks}
+    kept = attacks + tuple(
+        strategy
+        for strategy in document.strategies
+        if strategy.plugin is None and strategy.requires_brain in requirements
+    )
+    referenced = {strategy.plugin for strategy in kept if strategy.plugin}
+    return document.model_copy(
+        update={
+            "strategies": kept,
+            "plugins": tuple(plugin for plugin in document.plugins if plugin.id in referenced),
+        }
+    )
+
+
+def contract_of(document: CatalogueDocument) -> ContractSpec:
+    return parse_contract_spec(json.dumps(document.contract))
+
+
+def shared_contract(
+    store: ObjectStore, selected_versions: Mapping[str, int]
+) -> tuple[ContractSpec, str]:
+    """Return the identical embedded contract carried by every selected document."""
+    if not selected_versions:
+        raise ValueError("a run names at least one catalogue; none was given")
+    documents = {
+        f"{name} v{version}": load_document(store, name, version)
+        for name, version in selected_versions.items()
+    }
+    encoded = {
+        label: contract_store.encode(document.contract) for label, document in documents.items()
+    }
+    digests = {label: _digest(payload) for label, payload in encoded.items()}
+    if len(set(digests.values())) != 1:
+        from redteam_store.contract import ContractMismatch
+
+        raise ContractMismatch(
+            f"the selected catalogues carry different embedded contracts: {digests}"
+        )
+    first = next(iter(documents.values()))
+    return contract_of(first), next(iter(digests.values()))
+
 
 _SIDECARS: tuple[Callable[[str, int], str], ...] = (
     layout.catalogue_contract,
@@ -85,6 +209,79 @@ class Published:
 
     delivered: tuple[str, ...] = ()
     """The strategies whose delivery the sidecar declares, by id, at the same version."""
+
+
+def check_document(document: CatalogueDocument) -> None:
+    """Validate the complete schema-v2 document against contract, engines, and transforms."""
+    from redteam_catalogue.engines import declared_engines
+    from redteam_catalogue.premises import descriptor
+
+    incompatible = sorted(
+        strategy.id
+        for strategy in document.strategies
+        if (declared := descriptor(strategy.transform)) is not None
+        and declared.needs_brain
+        and not strategy.requires_brain
+    )
+    if incompatible:
+        raise ValueError(
+            f"strategies {incompatible} declare transforms that need a brain while "
+            "`requires_brain` is false"
+        )
+    catalogue = as_catalogue(document)
+    contract = contract_of(document)
+    validate(
+        catalogue,
+        validation_contract(contract),
+        *declared_engines(tuple(sorted({s.entity_kind for s in document.strategies}))),
+    )
+
+
+def publish_document(store: ObjectStore, document: CatalogueDocument) -> Published:
+    """Publish one canonical document under the next append-only version."""
+    check_document(document)
+    payload = json.dumps(
+        document.model_dump(mode="json"),
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+    ).encode("utf-8")
+    contract_bytes = contract_store.encode(document.contract)
+    delivered = tuple(
+        sorted(
+            strategy.id
+            for strategy in document.strategies
+            if not isinstance(strategy.interaction, SingleTurn)
+        )
+    )
+
+    def answer(version: int, *, created: bool) -> Published:
+        return Published(
+            name=document.name,
+            version=version,
+            key=layout.catalogue(document.name, version),
+            digest=_digest(payload),
+            contract_digest=_digest(contract_bytes),
+            principles=len(contract_of(document).principles),
+            created=created,
+            delivered=delivered,
+        )
+
+    current = versions(store, document.name)
+    if current and store.get(layout.catalogue(document.name, current[-1])) == payload:
+        return answer(current[-1], created=False)
+    for _ in range(CLAIM_ATTEMPTS):
+        current = versions(store, document.name)
+        version = current[-1] + 1 if current else FIRST_VERSION
+        key = layout.catalogue(document.name, version)
+        try:
+            store.put(key, payload, content_type="application/json")
+        except ObjectAlreadyExists:
+            if store.get(key) == payload:
+                return answer(version, created=False)
+            continue
+        return answer(version, created=True)
+    raise ObjectAlreadyExists(layout.catalogue(document.name, version))
 
 
 def names(store: ObjectStore) -> frozenset[str]:
@@ -195,14 +392,14 @@ class NothingToGenerate(ValueError):
         if grounded:
             super().__init__(
                 f"catalogue {name!r} carries no strategy that leans on a premise -- "
-                f"{sorted(left_out)} all stand without one -- and this run names a kb_ref. A "
+                f"{sorted(left_out)} all stand without one -- and this run names a brain. A "
                 f"premise would be appended to each of them rather than placed in it. Name a "
-                f"catalogue written for a knowledge base, or drop the kb_ref."
+                f"catalogue written for a knowledge base, or drop the brain."
             )
         else:
             super().__init__(
                 f"catalogue {name!r} carries no strategy that stands without a premise: "
-                f"{sorted(left_out)} all lean on one, and this run names no kb_ref. Attach a "
+                f"{sorted(left_out)} all lean on one, and this run names no brain. Attach a "
                 f"brain, or name a catalogue carrying strategies that need none."
             )
         self.name = name

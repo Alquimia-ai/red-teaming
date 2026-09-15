@@ -26,7 +26,7 @@ def _spec(**overrides: object) -> RunSpec:
 def test_a_minimal_spec_round_trips_through_json() -> None:
     spec = _spec()
     assert RunSpec.model_validate_json(spec.model_dump_json()) == spec
-    assert spec.kb_ref is None and spec.exploit is None and spec.webhook_url is None
+    assert spec.brain is None and spec.exploit is None and spec.webhook_url is None
     assert spec.catalogue_versions == {}
 
 
@@ -62,3 +62,23 @@ def test_the_spec_is_frozen() -> None:
 def test_replicas_start_at_one() -> None:
     with pytest.raises(ValidationError):
         _spec(replicas=0)
+
+
+def test_legacy_knowledge_fields_are_rejected() -> None:
+    with pytest.raises(ValidationError):
+        _spec(kb_ref={"registry": "registry", "repository": "brain", "digest": "sha256:x"})
+
+
+def test_a_brain_must_be_pinned_by_sha256_digest() -> None:
+    with pytest.raises(ValidationError):
+        _spec(brain={"registry": "registry", "repository": "brain", "digest": "latest"})
+
+    spec = _spec(
+        brain={
+            "registry": "registry",
+            "repository": "brain",
+            "digest": "sha256:" + "a" * 64,
+        }
+    )
+    assert spec.brain is not None
+    assert spec.brain.reference.endswith("@sha256:" + "a" * 64)

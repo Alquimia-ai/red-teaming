@@ -13,7 +13,6 @@ from redteam_api import deps
 from redteam_api.main import app
 from redteam_catalogue import assets
 from redteam_catalogue.bundle import load_bundle
-from redteam_catalogue.engines import declared_engines
 from redteam_contracts.run_spec import RunSpec
 from redteam_dispatch import AlreadyRunning, JobHandle, JobState
 from redteam_store import layout
@@ -41,10 +40,10 @@ def _spec(run_id: str, **overrides: Any) -> dict[str, Any]:
     `escalate-system-prompt` through `crescendo`, so the attacker has to be bound."""
     base: dict[str, Any] = {
         "run_id": run_id,
-        "kb_ref": None,
+        "brain": None,
         "catalogues": [CATALOGUE],
         "plugins": [],
-        "strategies": [],
+        "strategies": sorted(STANDING - {"ask-scope"}),
         "connector": {
             "kind": "alquimia",
             "endpoint": "https://runtime.example/api",
@@ -91,15 +90,7 @@ def test_the_newest_version_is_pinned_and_a_pin_the_consumer_made_is_kept(
     revised = bundle.catalogue.model_copy(
         update={"strategies": [first.model_copy(update={"id": f"{first.id}-v2"}), *rest]}
     )
-    assets.publish(
-        store,
-        CATALOGUE,
-        revised,
-        bundle.contract,
-        *declared_engines(bundle.entity_kinds),
-        needs_base=sorted(assets.needs_a_base(revised, bundle.needs_base)),
-        delivery=bundle.delivery,
-    )
+    assets.publish_document(store, bundle.document_for(revised))
 
     newest = client.post("/runs", json=_spec("run-newest"))
     pinned = client.post("/runs", json=_spec("run-pinned", catalogue_versions={CATALOGUE: 1}))
@@ -165,20 +156,51 @@ def test_the_brain_registry_credential_travels_when_the_deployment_names_one(
     )
 
     brainless = client.post("/runs", json=_spec("run-no-brain"))
+    unused = client.post(
+        "/runs",
+        json=_spec(
+            "run-unused-brain",
+            brain={
+                "registry": "ghcr.io",
+                "repository": "acme/kb",
+                "digest": "sha256:" + "a" * 64,
+            },
+        ),
+    )
     grounded = client.post(
         "/runs",
         json=_spec(
             "run-registry",
-            kb_ref={"registry": "ghcr.io", "repository": "acme/kb", "digest": "sha256:" + "b" * 64},
+            brain={"registry": "ghcr.io", "repository": "acme/kb", "digest": "sha256:" + "b" * 64},
+            strategies=["ask-about-fake-product"],
             attackers={},
         ),
     )
 
-    assert brainless.status_code == 202 and grounded.status_code == 202, grounded.text
+    assert brainless.status_code == unused.status_code == grounded.status_code == 202, grounded.text
     assert dispatcher.launched == [
         ("run-no-brain", ("TARGET_KEY",)),
+        ("run-unused-brain", ("TARGET_KEY",)),
         ("run-registry", ("TARGET_KEY", "REGISTRY_CREDS")),
-    ], "a run with no brain pulls nothing and carries no registry credential"
+    ], "only a selection that uses the brain receives the registry credential"
+
+
+def test_a_brain_required_selection_without_a_brain_is_refused_by_strategy_id(
+    client: TestClient, store: MemoryObjectStore, dispatcher: RecordingDispatcher
+) -> None:
+    response = client.post(
+        "/runs",
+        json=_spec(
+            "run-missing-brain",
+            strategies=["ask-about-fake-product"],
+            attackers={},
+        ),
+    )
+
+    assert response.status_code == 400
+    assert "ask-about-fake-product" in response.json()["detail"]
+    assert not store.exists(layout.spec("run-missing-brain"))
+    assert dispatcher.launched == []
 
 
 def test_a_secret_nothing_can_resolve_is_refused_before_the_spec_is_frozen(
@@ -234,17 +256,15 @@ def test_an_attacker_the_catalogue_conducts_through_and_the_spec_does_not_bind_i
     assert dispatcher.launched == []
 
 
-def test_a_grounded_run_over_the_seed_is_not_asked_to_bind_the_standing_half_s_attacker(
+def test_a_grounded_run_still_binds_attackers_for_selected_brainless_strategies(
     client: TestClient,
 ) -> None:
-    """With a brain, the seed generates its premise-bearing half, none of which is conducted; the
-    attacker the standing half names is inert and need not be bound."""
+    """A supplied brain does not change the independently selected strategies."""
     response = client.post(
         "/runs",
         json=_spec(
             "run-grounded",
-            kb_ref={"registry": "ghcr.io", "repository": "acme/kb", "digest": "sha256:" + "b" * 64},
-            attackers={},
+            brain={"registry": "ghcr.io", "repository": "acme/kb", "digest": "sha256:" + "b" * 64},
         ),
     )
     assert response.status_code == 202, response.text
@@ -265,22 +285,15 @@ def test_a_model_driven_construction_without_a_generator_is_refused_at_the_gate(
     """`assistant-invented-siblings` names `contextual_sibling`; a grounded run over it with no
     generator and no context is refused before a brain is pulled."""
     bundle = load_bundle(BASELINE.parent / "assistant-invented-siblings")
-    assets.publish(
-        store,
-        "siblings",
-        bundle.catalogue,
-        bundle.contract,
-        *declared_engines(bundle.entity_kinds),
-        needs_base=sorted(assets.needs_a_base(bundle.catalogue, bundle.needs_base)),
-        delivery=bundle.delivery,
-    )
+    assets.publish_document(store, bundle.document.model_copy(update={"name": "siblings"}))
 
     response = client.post(
         "/runs",
         json=_spec(
             "run-siblings",
             catalogues=["siblings"],
-            kb_ref={"registry": "ghcr.io", "repository": "acme/kb", "digest": "sha256:" + "b" * 64},
+            strategies=["ask-about-plausible-sibling"],
+            brain={"registry": "ghcr.io", "repository": "acme/kb", "digest": "sha256:" + "b" * 64},
             attackers={},
         ),
     )
@@ -307,14 +320,11 @@ def test_catalogues_that_disagree_on_the_contract_are_refused_as_unprocessable(
             *rest,
         ),
     )
-    assets.publish(
+    from redteam_contracts.contract import as_raw
+
+    assets.publish_document(
         store,
-        "reweighted",
-        bundle.catalogue,
-        other,
-        *declared_engines(bundle.entity_kinds),
-        needs_base=sorted(assets.needs_a_base(bundle.catalogue, bundle.needs_base)),
-        delivery=bundle.delivery,
+        bundle.document.model_copy(update={"name": "reweighted", "contract": as_raw(other)}),
     )
 
     response = client.post(
@@ -322,7 +332,7 @@ def test_catalogues_that_disagree_on_the_contract_are_refused_as_unprocessable(
     )
 
     assert response.status_code == 422
-    assert "different contracts" in response.json()["detail"]
+    assert "different embedded contracts" in response.json()["detail"]
     assert dispatcher.launched == []
 
 
@@ -546,15 +556,7 @@ def test_identical_retry_uses_frozen_catalogue_after_strategy_removal(
     revised = bundle.catalogue.model_copy(
         update={"strategies": [s for s in bundle.catalogue.strategies if s.id != "ask-identity"]}
     )
-    assets.publish(
-        store,
-        CATALOGUE,
-        revised,
-        bundle.contract,
-        *declared_engines(bundle.entity_kinds),
-        needs_base=sorted(assets.needs_a_base(revised, bundle.needs_base)),
-        delivery=bundle.delivery,
-    )
+    assets.publish_document(store, bundle.document_for(revised))
     retry = client.post("/runs", json=asked)
     assert retry.status_code == 202
     assert retry.json()["catalogue_versions"] == {CATALOGUE: 1}

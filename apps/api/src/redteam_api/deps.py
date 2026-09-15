@@ -20,8 +20,7 @@ from redteam_contracts.run_spec import RunSpec
 from redteam_dispatch import Dispatcher, build_dispatcher
 from redteam_secrets.resolver import SecretResolver, build_resolver
 from redteam_settings.config import DispatchBackend, SecretsBackend, Settings, load
-from redteam_store import contract as contract_store
-from redteam_store import delivery, grounding, layout
+from redteam_store import layout
 from redteam_store.backends import build_store
 from redteam_store.interface import ObjectNotFound, ObjectStore
 
@@ -106,15 +105,19 @@ def secret_refs_for(spec: RunSpec) -> tuple[str, ...]:
 
     The spec's own -- the connector's, the judge's, the generator's, the embedder's, every
     attacker's -- and the platform's one reference the runner needs beyond them: the brain
-    registry's credential, when the deployment names one **and the run declares a knowledge base**.
-    A run with no brain pulls nothing, and asking it to carry a registry credential would refuse
-    every brainless run on a deployment whose registry needs one. Forwarding exactly those is least
-    privilege by construction.
+    registry's credential, when the deployment names one **and the effective selection needs the
+    brain**. A run with no brain, or with only independent strategies, pulls nothing. Forwarding
+    exactly those references is least privilege by construction.
     """
     models = (spec.judge, spec.generator, spec.embedder, *spec.attackers.values())
     named = [spec.connector.secret_ref, *(m.secret_ref for m in models if m is not None)]
     registry = settings().brain_registry_secret_ref
-    if registry and spec.kb_ref is not None:
+    needs_registry = bool(
+        spec.brain is not None
+        and spec.catalogue_versions
+        and effective_selection(spec, spec.catalogue_versions).requires_brain
+    )
+    if registry and needs_registry:
         named.append(registry)
     return tuple(dict.fromkeys(ref for ref in named if ref))
 
@@ -137,13 +140,19 @@ def attackers_named(spec: RunSpec, versions: Mapping[str, int]) -> frozenset[str
     Raises:
         ValueError: Two of the run's catalogues deliver one strategy id differently.
     """
-    return delivery.attackers_named(
-        store(),
-        versions,
-        grounded=spec.kb_ref is not None,
-        plugins=spec.plugins,
-        strategies=spec.strategies,
-    )
+    from redteam_contracts.catalogue import AdaptiveMultiTurn
+
+    named: set[str] = set()
+    for name, version in versions.items():
+        document = assets.selected_document(
+            assets.load_document(store(), name, version), spec.plugins, spec.strategies
+        )
+        named.update(
+            strategy.interaction.attacker
+            for strategy in document.strategies
+            if isinstance(strategy.interaction, AdaptiveMultiTurn)
+        )
+    return frozenset(named)
 
 
 def shared_contract(versions: Mapping[str, int]) -> tuple[ContractSpec, str]:
@@ -153,7 +162,7 @@ def shared_contract(versions: Mapping[str, int]) -> tuple[ContractSpec, str]:
         ContractMismatch: The catalogues disagree.
         ContractMissing: A published version carries none, which is a store somebody edited.
     """
-    return contract_store.shared(store(), versions)
+    return assets.shared_contract(store(), versions)
 
 
 @dataclass(frozen=True)
@@ -163,6 +172,7 @@ class Selection:
 
     strategies: frozenset[str]
     transform_keys: frozenset[str]
+    requires_brain: frozenset[str]
 
     @property
     def model_driven(self) -> frozenset[str]:
@@ -180,22 +190,25 @@ def effective_selection(spec: RunSpec, versions: Mapping[str, int]) -> Selection
         assets.EmptySelection: The selectors leave nothing that attacks.
         assets.NothingToGenerate: A catalogue has no strategy written for this run's shape.
     """
-    grounded = spec.kb_ref is not None
     strategies: set[str] = set()
     keys: set[str] = set()
+    brain_required: set[str] = set()
     for name, version in versions.items():
-        catalogue = assets.load(store(), name, version)
-        selected = assets.narrow(catalogue, spec.plugins, spec.strategies)
-        usable = assets.generatable(
-            selected,
-            grounded=grounded,
-            declared=grounding.load(store(), name, version),
-            name=name,
+        selected = assets.selected_document(
+            assets.load_document(store(), name, version), spec.plugins, spec.strategies
         )
-        for strategy in usable.strategies:
+        language = spec.context.language if spec.context is not None else "und"
+        assets.as_catalogue(selected, language)
+        for strategy in selected.strategies:
             strategies.add(strategy.id)
             keys.add(strategy.transform)
-    return Selection(strategies=frozenset(strategies), transform_keys=frozenset(keys))
+            if strategy.requires_brain:
+                brain_required.add(strategy.id)
+    return Selection(
+        strategies=frozenset(strategies),
+        transform_keys=frozenset(keys),
+        requires_brain=frozenset(brain_required),
+    )
 
 
 def planned_units(run_id: str) -> int | None:

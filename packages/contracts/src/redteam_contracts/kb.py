@@ -18,18 +18,18 @@ from typing import Any, Protocol, runtime_checkable
 from pydantic import BaseModel, ConfigDict, Field
 
 
-class KnowledgeRef(BaseModel):
+class BrainRef(BaseModel):
     """A brain, pinned.
 
     By digest, never by tag. A tag moves like a git branch, and longitudinal validity needs an
     oracle nobody can move out from under a finished run.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
-    registry: str
-    repository: str
-    digest: str
+    registry: str = Field(min_length=1)
+    repository: str = Field(min_length=1)
+    digest: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
 
     @property
     def reference(self) -> str:
