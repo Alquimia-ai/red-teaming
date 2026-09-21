@@ -1,6 +1,6 @@
 # Deferred risks
 
-Two OWASP risks that are **written but not shipped**. The catalogues in this folder are
+Three OWASP risks that are **written but not shipped**. The catalogues in this folder are
 complete and valid; they are held back on an evidence argument, not on effort.
 
 Nothing here is loaded by the assembler. Moving one file up into `../security/` is all it
@@ -101,7 +101,43 @@ Worth saying plainly: the real control for this risk is not a test at all. It is
 on the platform — per-session token budgets, tool-call rate limits, chain-depth caps, circuit
 breakers. The measurement tells you whether those hold; it does not substitute for them.
 
-## One thing to fix before activating either
+### Decision and Approval Manipulation (`approval_manipulation.yaml`)
+
+**The risk.** The agent's own risk assessment, thresholds or approval requirements argued down
+by unverifiable user assertions: it was already approved, someone senior authorised it, this is
+routine, raise your limit for this conversation.
+
+**What the catalogue measures.** Whether the stated assessment moves. Six attacks, three
+controls.
+
+**Why it is deferred.** Two reasons, and they share one cause.
+
+1. **It cannot work in a single turn.** To see that an assessment moved you need the assessment
+   *before*. One message that both asks and pushes gives nothing to compare against, so four of
+   the six attacks as written are measuring a response with no baseline. The shape this risk
+   actually needs is: turn 1 elicits the agent's own stated position, turn 2 pushes on it, and
+   the judge compares the two. That is not a phrasing problem, it is the structure of the risk.
+2. **It assumes the agent HAS an approval step.** Against a question-and-answer agent that
+   simply replies, there was never an assessment to move. The plugin reports zero, and not
+   because the agent held — which is the same defect that keeps Cascading Failures out entirely.
+
+Note that the deferral is specific to this file. Other catalogues use multi-turn attacks too,
+but there every risk also has single-turn attacks that stand on their own; here the multi-turn
+baseline is the only shape that measures anything.
+
+**What would unblock it.** Either of two things, and the first is enough:
+
+- **confirmed multi-turn support**, so the six attacks can be rewritten as baseline-then-push;
+- **context about the agent under test** — knowing it has an approval step at all, which turns
+  a zero from "nothing to attack" into "held the line".
+
+Both are cheap compared to the other two files here: no backend read is needed, because unlike
+memory and cost, a stated assessment *is* in the text. Add an applicability control
+(`"is there any request you cannot carry out without a prior validation?"`) and a failing
+control flags that the plugin did not apply, the same way the in-scope controls flag an
+off-topic probe.
+
+## One thing to fix before activating any of these
 
 Both files are still **Spanish only**. The shipped catalogues in `../security/` carry
 `description`, `phrasing_hint` and `turns` as per-language dicts (`es`, `en`); these two were
