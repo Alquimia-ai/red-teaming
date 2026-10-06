@@ -10,7 +10,7 @@ from __future__ import annotations
 from pydantic import BaseModel, ConfigDict, Field
 
 from redteam_contracts.kb import BrainRef
-from redteam_contracts.run_spec import ModelSpec, ProbeContext, RunSpec
+from redteam_contracts.run_spec import ContractScope, ModelSpec, ProbeContext, RunSpec
 
 
 class GenerationRequest(BaseModel):
@@ -31,6 +31,7 @@ class GenerationRequest(BaseModel):
 
     plugins: tuple[str, ...] = ()
     strategies: tuple[str, ...] = ()
+    contract_scope: ContractScope = "catalogue"
 
     context: ProbeContext | None = None
     """Language, domain and tone. Reaches the constructions that need a model, and a key naming one
@@ -50,6 +51,7 @@ class GenerationRequest(BaseModel):
             catalogue_versions=dict(spec.catalogue_versions),
             plugins=spec.plugins,
             strategies=spec.strategies,
+            contract_scope=spec.contract_scope,
             context=spec.context,
             generator=spec.generator,
         )
@@ -77,7 +79,7 @@ class GenerationReport(BaseModel):
     records, so a resumed run can say exactly which catalogue produced its plan."""
 
     contract_digest: str = ""
-    """The digest of the contract every selected catalogue carries, which validated this set and
+    """The digest of the effective run contract, which validated this set and
     will grade the run. Recorded because "the newest at the time" is not something a later reader
     can reconstruct."""
 

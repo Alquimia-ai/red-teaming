@@ -16,6 +16,8 @@ def test_the_phases_have_no_measuring_step() -> None:
         "generating",
         "attacking",
         "complete",
+        "cancelling",
+        "cancelled",
         "failed",
     ]
 

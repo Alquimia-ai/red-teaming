@@ -243,6 +243,34 @@ def test_a_different_base_produces_a_different_digest(catalogue: Catalogue) -> N
     assert generate(half, one).digest != generate(half, two).digest
 
 
+def test_converging_premises_keep_distinct_origin_identities(catalogue: Catalogue) -> None:
+    fixture = tuple(
+        ("product", name)
+        for name in (
+            "Cuenta de Ahorro Gnial (Cuenta de ahorro)",
+            "Cuenta de Ahorro Infantil (Cuenta de ahorro)",
+            "Cuenta de Ahorro Popular (Cuenta de ahorro)",
+            "Cuenta de Ahorro Empresarial (Ahorro a plazo)",
+        )
+    )
+    probes = generate(_only_grounded(catalogue), _kb(fixture)).probes
+    converged = [
+        probe
+        for probe in probes
+        if probe.strategy == "ask-about-fake-product"
+        and probe.hook is not None
+        and probe.hook.references == "Cuenta de Ahorro Empresarial (Cuenta de ahorro)"
+    ]
+
+    assert len(converged) == 3
+    assert len({probe.query for probe in converged}) == 1
+    assert len({probe.id for probe in converged}) == 3
+    assert len({probe.id for probe in probes}) == len(probes)
+
+    reordered = generate(_only_grounded(catalogue), _kb(tuple(reversed(fixture)))).probes
+    assert {probe.id for probe in reordered} == {probe.id for probe in probes}
+
+
 def test_adding_an_entity_does_not_change_any_other_probe_s_identity(
     catalogue: Catalogue,
 ) -> None:

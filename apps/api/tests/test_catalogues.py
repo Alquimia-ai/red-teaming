@@ -8,6 +8,7 @@ from typing import Any
 
 from fastapi.testclient import TestClient
 
+from redteam_catalogue.assets import load_document
 from redteam_store import layout
 from redteam_store.memory import MemoryObjectStore
 
@@ -121,3 +122,69 @@ def test_a_probe_set_is_read_by_content(client: TestClient, store: MemoryObjectS
     assert client.get(f"/probes/{digest}").json() == [{"id": "p1", "query": "q?"}]
     assert client.get(f"/probes/{'d' * 64}").status_code == 404
     assert client.get("/probes/not-a-digest").status_code == 400
+
+
+def test_scope_is_persisted_and_latest_library_scope_changes_without_rewriting_history(
+    client: TestClient, store: MemoryObjectStore
+) -> None:
+    original = store.get(layout.catalogue(CATALOGUE, 1))
+    scope = {"agentspace_id": "workspace", "assistant_id": "assistant"}
+    document = _bundle(BASELINE, CATALOGUE, scope=scope)
+    checked = client.post("/catalogues:validate", json=document)
+    assert checked.status_code == 200
+    assert store.get(layout.catalogue(CATALOGUE, 1)) == original
+    assert client.post("/catalogues", json=document).json()["version"] == 2
+    assert client.post("/catalogues", json=document).json()["created"] is False
+    assert json.loads(store.get(layout.catalogue(CATALOGUE, 2)))["scope"] == scope
+    assert client.get("/catalogues:library").json() == {
+        CATALOGUE: {"versions": [1, 2], "scope": scope, "description": None}
+    }
+    assert client.get("/catalogues").json() == {CATALOGUE: [1, 2]}
+    assert store.get(layout.catalogue(CATALOGUE, 1)) == original
+
+    # Returning to global is a new version; null and omitted encode identical canonical bytes.
+    restored = client.post("/catalogues", json=_bundle(BASELINE, CATALOGUE, scope=None))
+    assert restored.json()["version"] == 3
+    assert store.get(layout.catalogue(CATALOGUE, 3)) == original
+    assert client.post("/catalogues", json=_bundle(BASELINE, CATALOGUE)).json()["created"] is False
+    assert client.get("/catalogues:library").json()[CATALOGUE]["scope"] is None
+
+
+def test_description_round_trips_without_changing_contract_or_previous_versions(
+    client: TestClient, store: MemoryObjectStore
+) -> None:
+    original = store.get(layout.catalogue(CATALOGUE, 1))
+    assert "description" not in json.loads(original)
+    description = "Evalúa alcance y privacidad.\nIncluye controles positivos."
+    document = _bundle(BASELINE, CATALOGUE, description=description)
+    keys = store.list_prefix("")
+    checked = client.post("/catalogues:validate", json=document)
+    assert checked.status_code == 200, checked.text
+    assert store.list_prefix("") == keys
+
+    baseline = client.post("/catalogues", json=_bundle(BASELINE, CATALOGUE)).json()
+    published = client.post("/catalogues", json=document)
+    assert published.status_code == 201, published.text
+    assert published.json()["version"] == 2
+    assert published.json()["contract_digest"] == baseline["contract_digest"]
+    assert published.json()["digest"] != baseline["digest"]
+    assert load_document(store, CATALOGUE, 2).description == description
+    assert load_document(store, CATALOGUE, 1).description is None
+    assert store.get(layout.catalogue(CATALOGUE, 1)) == original
+    assert client.post("/catalogues", json=document).json()["created"] is False
+    assert client.get("/catalogues:library").json()[CATALOGUE] == {
+        "versions": [1, 2],
+        "scope": None,
+        "description": description,
+    }
+
+    revised = _bundle(BASELINE, CATALOGUE, description="Sólo alcance.")
+    assert client.post("/catalogues", json=revised).json()["version"] == 3
+    assert client.get("/catalogues:library").json()[CATALOGUE]["description"] == "Sólo alcance."
+    assert load_document(store, CATALOGUE, 2).description == description
+
+    removed = client.post("/catalogues", json=_bundle(BASELINE, CATALOGUE, description=None))
+    assert removed.json()["version"] == 4
+    assert store.get(layout.catalogue(CATALOGUE, 4)) == original
+    assert client.post("/catalogues", json=_bundle(BASELINE, CATALOGUE)).json()["created"] is False
+    assert client.get("/catalogues:library").json()[CATALOGUE]["description"] is None

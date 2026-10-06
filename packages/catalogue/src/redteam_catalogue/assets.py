@@ -21,7 +21,7 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
 from gaussia.schemas.roastme import Catalogue
@@ -35,6 +35,7 @@ from redteam_contracts.catalogue import (
     SingleTurn,
 )
 from redteam_contracts.contract import ContractSpec, as_raw, parse_contract_spec
+from redteam_contracts.run_spec import ContractScope
 from redteam_store import contract as contract_store
 from redteam_store import delivery as delivery_store
 from redteam_store import grounding as grounding_store
@@ -138,28 +139,36 @@ def contract_of(document: CatalogueDocument) -> ContractSpec:
     return parse_contract_spec(json.dumps(document.contract))
 
 
-def shared_contract(
-    store: ObjectStore, selected_versions: Mapping[str, int]
+def run_contract(
+    store: ObjectStore,
+    selected_versions: Mapping[str, int],
+    *,
+    plugins: Sequence[str] = (),
+    strategies: Sequence[str] = (),
+    contract_scope: ContractScope = "catalogue",
 ) -> tuple[ContractSpec, str]:
-    """Return the identical embedded contract carried by every selected document."""
-    if not selected_versions:
-        raise ValueError("a run names at least one catalogue; none was given")
-    documents = {
-        f"{name} v{version}": load_document(store, name, version)
-        for name, version in selected_versions.items()
-    }
-    encoded = {
-        label: contract_store.encode(document.contract) for label, document in documents.items()
-    }
-    digests = {label: _digest(payload) for label, payload in encoded.items()}
-    if len(set(digests.values())) != 1:
-        from redteam_store.contract import ContractMismatch
-
-        raise ContractMismatch(
-            f"the selected catalogues carry different embedded contracts: {digests}"
+    """Resolve the frozen run's criterion without changing any published document."""
+    contract, digest = contract_store.shared(store, selected_versions)
+    if contract_scope == "catalogue":
+        return contract, digest
+    if not plugins and not strategies:
+        raise EmptySelection(
+            "a selected-strategies contract requires at least one attack selection"
         )
-    first = next(iter(documents.values()))
-    return contract_of(first), next(iter(digests.values()))
+
+    active: set[str] = set()
+    for name, version in selected_versions.items():
+        document = selected_document(load_document(store, name, version), plugins, strategies)
+        active.update(plugin.principle for plugin in document.plugins)
+    principles = tuple(principle for principle in contract.principles if principle.id in active)
+    total = sum(principle.weight for principle in principles)
+    effective = replace(
+        contract,
+        principles=tuple(
+            replace(principle, weight=principle.weight / total) for principle in principles
+        ),
+    )
+    return effective, _digest(contract_store.encode(as_raw(effective)))
 
 
 _SIDECARS: tuple[Callable[[str, int], str], ...] = (
@@ -241,7 +250,17 @@ def publish_document(store: ObjectStore, document: CatalogueDocument) -> Publish
     """Publish one canonical document under the next append-only version."""
     check_document(document)
     payload = json.dumps(
-        document.model_dump(mode="json"),
+        document.model_dump(
+            mode="json",
+            exclude={
+                field
+                for field, value in (
+                    ("scope", document.scope),
+                    ("description", document.description),
+                )
+                if value is None
+            },
+        ),
         sort_keys=True,
         separators=(",", ":"),
         ensure_ascii=False,

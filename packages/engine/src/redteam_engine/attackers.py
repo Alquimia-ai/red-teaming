@@ -11,6 +11,9 @@ from redteam_engine.attacker import Attacker
 from redteam_engine.governed import SecretResolver
 from redteam_judges.models import build_chat_model
 
+ATTACKER_MAX_TOKENS = 512
+"""One follow-up is a short user message, not an unbounded reasoning transcript."""
+
 
 class AttackerUnbound(RuntimeError):
     """A live unit is delivered through an attacker id the spec binds no model to.
@@ -47,5 +50,8 @@ def attackers_for(
     for name in needed:
         model_spec = spec.attackers[name]
         api_key = resolver.resolve(model_spec.secret_ref) if model_spec.secret_ref else None
-        attackers[name] = Attacker(build_chat_model(model_spec, api_key=api_key), spec.context)
+        attackers[name] = Attacker(
+            build_chat_model(model_spec, api_key=api_key, max_tokens=ATTACKER_MAX_TOKENS),
+            spec.context,
+        )
     return attackers

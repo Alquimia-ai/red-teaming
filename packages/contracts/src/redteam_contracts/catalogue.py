@@ -141,6 +141,15 @@ class CatalogueStrategy(BaseModel):
         return (resolve_text(self.interaction.opening, language),)
 
 
+class CatalogueScope(BaseModel):
+    """A catalogue reserved for one assistant in one registry workspace."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    agentspace_id: str = Field(min_length=1, pattern=r"^\S+$")
+    assistant_id: str = Field(min_length=1, pattern=r"^\S+$")
+
+
 class CatalogueDocument(BaseModel):
     """Schema v2: one digest covers behavior, strategies, and delivery."""
 
@@ -148,6 +157,10 @@ class CatalogueDocument(BaseModel):
 
     schema_version: Literal[2]
     name: str = Field(min_length=1)
+    description: str | None = None
+    """Optional display text, not a grading rubric. Belongs to this immutable version."""
+    scope: CatalogueScope | None = None
+    """Absent or null means global. Scope belongs to this immutable version."""
     contract: dict[str, Any]
     plugins: tuple[CataloguePlugin, ...]
     strategies: tuple[CatalogueStrategy, ...]

@@ -34,6 +34,22 @@ A spec names `provider: openrouter` with a `secret_ref` into the runner Secret, 
 needed. The manifest records the provider and the serving path either way, so two runs graded
 through different paths are never compared by accident.
 
+A hosted `openai_compatible` control judge, such as a Hugging Face endpoint, must answer an
+authenticated `GET {endpoint}/models` before the runner generates probes or calls the target.
+The runner waits up to ten minutes for a cold endpoint returning 502/503/504 or a connection
+error. A different HTTP status fails immediately; an endpoint that remains unavailable fails the
+attempt without spending target calls.
+
+## Request bounds
+
+Chat requests to either provider have a 120-second network timeout and no hidden client retries;
+the caller's retry policy remains the only one. An attacker follow-up is limited to 512 output
+tokens, including reasoning tokens, so a model cannot spend a run generating an unbounded next
+message. This cap does not apply to the control judge or generator. If an attacker exhausts its
+three attempts, the conversation trace records `attacker_failure`; the runner logs each failed
+attempt's exception type. The run's wall-clock budget is checked again after an attacker response
+or failure, before any further target call.
+
 ## Sharing one card
 
 Two pods requesting `nvidia.com/gpu: 1` on a node with one card need the device plugin configured

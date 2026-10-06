@@ -6,6 +6,7 @@ An interrupted conversation retains its evidence before any fatal error propagat
 
 from __future__ import annotations
 
+import logging
 import secrets
 import time
 from collections.abc import Callable, Iterable, Mapping, Sequence
@@ -16,7 +17,10 @@ from gaussia.schemas.roastme import TargetResponse
 
 from redteam_contracts.plan import WorkUnit
 from redteam_contracts.trace import TraceLabels
+from redteam_engine.errors import BudgetExhausted
 from redteam_store.delivery import STATIC, Delivery, Objective
+
+logger = logging.getLogger(__name__)
 
 STATIC_TECHNIQUE = "static"
 """The delivery every strategy has unless the sidecar says otherwise: the query is sent, the answer
@@ -250,6 +254,7 @@ def conduct_many(
     backoff: float = ATTACKER_BACKOFF,
     sleep: Callable[[float], None] | None = None,
     mint: Callable[[], str] | None = None,
+    check_time: Callable[[], None] | None = None,
 ) -> tuple[Conversation | None, BaseException | None]:
     """One conversation: the opening, then what the attacker writes, until something ends it.
 
@@ -287,9 +292,18 @@ def conduct_many(
             ended = ENDED_BY_BOUND
             break
         transcript = [(q, r.content) for q, r in pairs]
-        next_turn, asked = _next_turn(
-            attacker, planned, transcript, attempts=attempts, backoff=backoff, pause=pause
-        )
+        try:
+            if check_time is not None:
+                check_time()
+            next_turn, asked = _next_turn(
+                attacker, planned, transcript, attempts=attempts, backoff=backoff, pause=pause
+            )
+            if check_time is not None:
+                check_time()
+        except BudgetExhausted as exhausted:
+            ended = ENDED_BY_BUDGET
+            fatal = exhausted
+            break
         if not asked:
             ended = ENDED_BY_ATTACKER_FAILURE
             break
@@ -367,11 +381,19 @@ def _next_turn(
     such rather than to read as "done".
     """
     assert planned.objective is not None
-    for attempt in range(1, max(attempts, 1) + 1):
+    limit = max(attempts, 1)
+    for attempt in range(1, limit + 1):
         try:
             return attacker.next_turn(planned.objective, planned.approach, transcript), True
-        except Exception:
-            if attempt == max(attempts, 1):
+        except Exception as error:
+            logger.warning(
+                "attacker %s failed on attempt %s/%s: %s",
+                planned.delivery.attacker,
+                attempt,
+                limit,
+                type(error).__name__,
+            )
+            if attempt == limit:
                 return None, False
             pause(backoff * (2 ** (attempt - 1)))
     return None, False

@@ -157,3 +157,21 @@ class DockerDispatcher:
         if status in ("exited", "dead"):
             return JobState.SUCCEEDED if int(state.get("ExitCode", 1)) == 0 else JobState.FAILED
         return JobState.UNKNOWN
+
+    def stop(self, run_id: str) -> None:
+        name = job_name(run_id)
+        try:
+            with self._client() as client:
+                stopped = client.post(f"/containers/{name}/stop", params={"t": 10})
+        except httpx.HTTPError as error:
+            raise DispatchError(f"cannot stop container {name}: {error}") from error
+        if stopped.status_code not in {
+            HTTPStatus.NO_CONTENT,
+            HTTPStatus.NOT_MODIFIED,
+            HTTPStatus.NOT_FOUND,
+        }:
+            raise DispatchError(
+                f"cannot stop container {name}: {stopped.status_code} {stopped.text}"
+            )
+        if self.status(run_id).alive:
+            raise DispatchError(f"container {name} is still running")

@@ -15,6 +15,7 @@ from collections.abc import Mapping, Sequence
 from redteam_dispatch.dispatcher import (
     ENTRYPOINT,
     AlreadyRunning,
+    DispatchError,
     JobHandle,
     JobState,
     job_name,
@@ -70,3 +71,18 @@ class LocalSubprocessDispatcher:
         if code is None:
             return JobState.RUNNING
         return JobState.SUCCEEDED if code == 0 else JobState.FAILED
+
+    def stop(self, run_id: str) -> None:
+        job_name(run_id)
+        process = self._running.get(run_id)
+        if process is None or process.poll() is not None:
+            return
+        process.terminate()
+        try:
+            process.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            try:
+                process.wait(timeout=10)
+            except subprocess.TimeoutExpired as error:
+                raise DispatchError(f"runner {run_id} did not stop") from error

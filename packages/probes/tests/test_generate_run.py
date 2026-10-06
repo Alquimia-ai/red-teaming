@@ -128,6 +128,23 @@ def test_the_second_run_over_one_set_skips_the_write_and_the_first_does_not(
     assert second.skipped_existing is True
 
 
+def test_generation_records_the_effective_contract_digest(store: MemoryObjectStore) -> None:
+    request = _request(
+        "run-selected", strategies=("ask-identity",), contract_scope="selected_strategies"
+    )
+    report = generate_for(store, request)
+    _, digest = assets.run_contract(
+        store,
+        {"baseline": 1},
+        strategies=request.strategies,
+        contract_scope=request.contract_scope,
+    )
+    assert report.contract_digest == digest
+    assert report.contract_digest != contract_store.digest(store, "baseline", 1)
+    probes = json.loads(store.get(layout.blob(report.probes_digest)))
+    assert {probe["plugin"] for probe in probes} == {"undisclosed-identity", None}
+
+
 def test_a_run_whose_set_is_pinned_is_answered_from_its_record(
     store: MemoryObjectStore, bundle: Bundle
 ) -> None:

@@ -18,12 +18,15 @@ from gaussia.schemas.roastme import TargetResponse
 
 from redteam_catalogue import assets
 from redteam_catalogue.bundle import load_bundle
+from redteam_catalogue.memory_kb import MemoryKnowledgeBase
 from redteam_contracts.failure import UNAUTHORIZED, TransportFailure
+from redteam_contracts.kb import BrainRef, Entity, Passage
 from redteam_contracts.manifest import Manifest, RunPhase
 from redteam_contracts.run_spec import ConnectorSpec, ModelSpec, ProbeContext, RunSpec
 from redteam_delivery import Delivered, NotAsked, idempotency_key
 from redteam_engine.planned import ENDED_BY_BOUND, MANY_TURNS
 from redteam_runner import pipeline
+from redteam_runner.readiness import JudgeNotReady
 from redteam_settings.config import Settings, StoreBackend
 from redteam_store import layout
 from redteam_store.codec import decode_trace
@@ -243,6 +246,65 @@ def test_a_closed_run_is_not_run_again(store: MemoryObjectStore) -> None:
     assert store.list_prefix(layout.attempts_prefix(RUN) + "/").__len__() == 1
 
 
+def test_converging_premises_close_distinct_traces_for_each_origin_and_replica() -> None:
+    names = (
+        "Cuenta de Ahorro Gnial (Cuenta de ahorro)",
+        "Cuenta de Ahorro Infantil (Cuenta de ahorro)",
+        "Cuenta de Ahorro Popular (Cuenta de ahorro)",
+        "Cuenta de Ahorro Empresarial (Ahorro a plazo)",
+    )
+    base = MemoryKnowledgeBase(
+        [Entity(kind="product", name=name, block_id=f"block-{i}") for i, name in enumerate(names)],
+        [
+            Passage(id=f"block-{i}", content=name, structured=True, kind="product")
+            for i, name in enumerate(names)
+        ],
+    )
+    spec = _spec(
+        brain=BrainRef(
+            registry="example.test", repository="fixture/kb", digest="sha256:" + "b" * 64
+        ),
+        strategies=("ask-about-fake-product",),
+        replicas=2,
+    )
+    store = MemoryObjectStore()
+    _publish(store)
+    store.put(layout.spec(RUN), spec.model_dump_json().encode())
+    assistant = _Assistant()
+    receiver = _Receiver()
+
+    outcome = pipeline.execute(
+        RUN,
+        settings=_settings(),
+        store=store,
+        resolver=_Resolver(),
+        target=assistant,
+        knowledge_base=base,
+        webhook_client=receiver.client(),
+    )
+
+    assert outcome.phase is RunPhase.COMPLETE
+    manifest = Manifest.model_validate_json(store.get(layout.manifest(RUN)))
+    traces = _traces(store)
+    assert manifest.coverage.total.pending == 0
+    assert manifest.coverage.total.closed == manifest.coverage.total.planned == len(traces)
+    assert len(assistant.calls) == len(traces)
+    converged = [
+        trace
+        for trace in traces
+        if trace.labels.strategy == "ask-about-fake-product"
+        and trace.labels.attacked_entity == "Cuenta de Ahorro Empresarial (Cuenta de ahorro)"
+    ]
+    assert len(converged) == 6
+    assert len({trace.probe_id for trace in converged}) == 3
+    assert len({(trace.attack_id, trace.replica_idx) for trace in converged}) == 6
+
+    again, replay_target, _, _ = _execute(store)
+    assert again.phase is RunPhase.COMPLETE
+    assert again.n_traces == len(traces)
+    assert replay_target.calls == []
+
+
 def test_a_dry_run_reads_the_spec_and_writes_nothing(store: MemoryObjectStore) -> None:
     outcome, assistant, _, receiver = _execute(store, dry_run=True)
 
@@ -274,6 +336,33 @@ def test_a_failure_before_the_attack_leaves_a_record_and_tells_the_consumer() ->
     assert payload["phase"] == "failed" and payload["manifest"] == key
     assert payload["artifacts"]["dataset"] is None
     assert idem == idempotency_key(RUN, "failed")
+
+
+def test_a_cold_judge_does_not_spend_conversations(monkeypatch: pytest.MonkeyPatch) -> None:
+    store = MemoryObjectStore()
+    _publish(store)
+    judge = ModelSpec(
+        model="nemotron",
+        provider="openai_compatible",
+        endpoint="https://judge.example/v1",
+        secret_ref="JUDGE_KEY",
+    )
+    store.put(layout.spec(RUN), _spec(judge=judge).model_dump_json().encode())
+
+    def not_ready(spec: ModelSpec, api_key: str | None, *, cancelled: Any) -> bool:
+        assert spec == judge
+        assert api_key == "resolved-JUDGE_KEY"
+        raise JudgeNotReady("judge did not become ready within 600s (last: HTTP 503)")
+
+    monkeypatch.setattr(pipeline, "wait_for_judge", not_ready)
+    outcome, assistant, _, _ = _execute(store)
+
+    assert outcome.phase is RunPhase.FAILED
+    assert assistant.calls == []
+    assert not store.exists(layout.probes(RUN))
+    assert not store.exists(layout.manifest(RUN))
+    assert outcome.record is not None
+    assert "HTTP 503" in json.loads(store.get(outcome.record))["error"]
 
 
 def test_a_channel_that_dies_mid_attack_fails_typed_and_the_relaunch_resumes(

@@ -26,6 +26,7 @@ from redteam_engine.call_journal import CallJournal
 from redteam_engine.planned import AttackerProtocol
 from redteam_probes.generate_run import generate_for, needs_brain
 from redteam_probes.request import GenerationReport, GenerationRequest
+from redteam_runner.readiness import wait_for_judge
 from redteam_runner.wiring import brain_registry, generator_for
 from redteam_secrets.resolver import SecretResolver, build_resolver
 from redteam_settings.config import Settings
@@ -84,15 +85,25 @@ def execute(
     if store.exists(layout.manifest(run_id)):
         closed = _n_traces(store, run_id)
         return RunOutcome(run_id, RunPhase.COMPLETE, closed, closed, layout.manifest(run_id))
+    if store.exists(layout.cancel_requested(run_id)):
+        closed = _n_traces(store, run_id)
+        return RunOutcome(run_id, RunPhase.CANCELLED, closed, closed, None)
 
     resolver = resolver or _resolver(settings)
     # Announced before anything else, under the id a failure record would carry: the status reads
     # `failed` only while the newest attempt is the one that died, so a relaunch that has begun
     # reads as what it is doing rather than as the death it is recovering from.
     attempt = begin_attempt(store, run_id=run_id)
-    started = time.monotonic()
     resumed = 0
     try:
+        judge_key = resolver.resolve(spec.judge.secret_ref) if spec.judge.secret_ref else None
+        if not wait_for_judge(
+            spec.judge,
+            judge_key,
+            cancelled=lambda: store.exists(layout.cancel_requested(run_id)),
+        ):
+            return RunOutcome(run_id, RunPhase.CANCELLED, _n_traces(store, run_id), resumed, None)
+        started = time.monotonic()
         if not store.exists(layout.dataset(run_id)) and not store.exists(
             layout.recovery(run_id, "conduction")
         ):
@@ -127,6 +138,8 @@ def execute(
             started_at=started,
         )
         n_traces = _n_traces(store, run_id)
+        if store.exists(layout.cancel_requested(run_id)):
+            return RunOutcome(run_id, RunPhase.CANCELLED, n_traces, resumed, None)
         manifest = write_manifest(
             store,
             run_id=run_id,

@@ -187,7 +187,9 @@ def _cited(
     the resumed runner would find none of its keys, conclude nothing was done, and attack the
     assistant all over again. Nothing raises when that happens.
 
-    So the identity is content: the engine, the strategy, the premise and how it was derived.
+    So the identity is content: the engine, the strategy, the premise and how it was derived,
+    including its base entity. Different entities can converge on the same transformed premise;
+    they still carry distinct knowledge hooks and must occupy distinct work units.
     **`engine` is in the digest on purpose.** gaussia scopes its ids by engine name so that probes
     two engines derived independently stay distinct -- collapsing them would merge a confirmed
     absence label with an unreliable one, and the absence guarantee would stop holding after
@@ -227,6 +229,7 @@ def _identity(probe: Probe) -> str:
             "engine": probe.engine,
             "strategy": probe.strategy,
             "references": hook.references if hook else None,
+            "base_entity": hook.base_entity if hook else None,
             "how": hook.how if hook else None,
             "execution": {
                 key: probe.meta.get(key)

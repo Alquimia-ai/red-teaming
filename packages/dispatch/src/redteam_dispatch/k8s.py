@@ -280,6 +280,50 @@ class K8sJobDispatcher:
             time.sleep(0.1)
         raise DispatchError(f"Job {name} is still being removed; retry the request")
 
+    def stop(self, run_id: str) -> None:
+        name = job_name(run_id)
+        path = f"{self._jobs}/{name}"
+        try:
+            with self._client() as client:
+                fetched = client.get(path)
+                if fetched.status_code == HTTPStatus.NOT_FOUND:
+                    return
+                if fetched.is_error:
+                    raise DispatchError(f"cannot inspect Job {name}: {fetched.status_code}")
+                metadata = fetched.json().get("metadata") or {}
+                labels = metadata.get("labels") or {}
+                if labels.get(LABEL_NAME) != APP_LABEL or labels.get(LABEL_RUN) != run_id:
+                    raise DispatchError(
+                        f"Job {name} is not a managed runner; refusing cancellation"
+                    )
+                uid = metadata.get("uid")
+                if not uid:
+                    raise DispatchError(f"Job {name} has no verifiable identity")
+                deleted = client.request(
+                    "DELETE",
+                    path,
+                    json={
+                        "apiVersion": "v1",
+                        "kind": "DeleteOptions",
+                        "preconditions": {"uid": uid},
+                        "propagationPolicy": "Foreground",
+                    },
+                )
+                if deleted.status_code == HTTPStatus.CONFLICT:
+                    raise DispatchError(f"Job {name} changed during cancellation; retry")
+                if deleted.status_code != HTTPStatus.NOT_FOUND and deleted.is_error:
+                    raise DispatchError(f"cannot stop Job {name}: {deleted.status_code}")
+                for _ in range(50):
+                    remaining = client.get(path)
+                    if remaining.status_code == HTTPStatus.NOT_FOUND:
+                        return
+                    if remaining.is_error:
+                        raise DispatchError(f"cannot verify Job {name} stopped")
+                    time.sleep(0.2)
+        except httpx.HTTPError as error:
+            raise DispatchError(f"cannot stop Job {name}: {error}") from error
+        raise DispatchError(f"Job {name} is still terminating; retry cancellation")
+
     def status(self, run_id: str) -> JobState:
         """What the Job's status says, read off its conditions first and its counters second.
 

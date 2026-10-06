@@ -182,11 +182,60 @@ def _attack(
     return attacked, target, attacker
 
 
+def test_attacker_models_have_a_bounded_output(monkeypatch: pytest.MonkeyPatch) -> None:
+    from redteam_engine import attackers as attacker_module
+
+    limits: list[int | None] = []
+
+    def build(_model: ModelSpec, *, api_key: str | None, max_tokens: int | None) -> object:
+        limits.append(max_tokens)
+        return object()
+
+    monkeypatch.setattr(attacker_module, "build_chat_model", build)
+    monkeypatch.setattr(attacker_module, "Attacker", lambda _model, _context: object())
+
+    attacker_module.attackers_for(_spec(), _Resolver(), {"crescendo"})
+
+    assert limits == [512]
+
+
 @pytest.fixture
 def store() -> MemoryObjectStore:
     store = MemoryObjectStore()
     _publish(store)
     return store
+
+
+def test_the_judge_grades_only_the_effective_contract(store: MemoryObjectStore) -> None:
+    spec = _spec(strategies=("escalate-system-prompt",), contract_scope="selected_strategies")
+    probe = PROBES[0]
+    plan = expand(
+        RUN,
+        [
+            PlannedProbe(
+                probe_id=probe["id"],
+                plugin=probe["plugin"],
+                strategy=probe["strategy"],
+            )
+        ],
+        {},
+        1,
+    )
+    attacked, _, _ = _attack(store, spec=spec, plan=plan)
+    contract, digest = assets.run_contract(
+        store,
+        {CATALOGUE: 1},
+        strategies=spec.strategies,
+        contract_scope=spec.contract_scope,
+    )
+    assert [(p.id, p.weight) for p in contract.principles] == [("no_disclosure", 1)]
+    assert attacked.components["contract_digest"] == digest
+    [session] = json.loads(store.get(layout.dataset(RUN)))
+    [turn] = session["conversation"]
+    assert {grade["principle"] for grade in turn["roast"]["rationale"]} == {"no_disclosure"}
+    assert turn["roast"]["violation"] == pytest.approx(turn["roast"]["rationale"][0]["score"])
+    profile = json.loads(store.get(layout.profile(RUN)))
+    assert {w["principle"] for w in profile["profile"]["weaknesses"]} == {"no_disclosure"}
 
 
 def test_a_conducted_conversation_of_four_turns_lands_in_one_trace(

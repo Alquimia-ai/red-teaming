@@ -89,6 +89,17 @@ def test_a_manifest_after_a_failure_reads_complete() -> None:
     assert derive(store, RUN, 4, JobState.SUCCEEDED).phase is RunPhase.COMPLETE
 
 
+def test_cancel_intent_and_confirmed_stop_preserve_progress() -> None:
+    store = _store_with(layout.spec(RUN), layout.trace(RUN, ATTACK, 0))
+    store.put(layout.cancel_requested(RUN), b"{}")
+    requested = derive(store, RUN, 4, JobState.RUNNING)
+    assert (requested.phase, requested.closed, requested.pending) == (RunPhase.CANCELLING, 1, 3)
+    store.put(layout.cancelled(RUN), b"{}")
+    assert derive(store, RUN, 4, JobState.FAILED).phase is RunPhase.CANCELLED
+    store.put(layout.manifest(RUN), b"{}")
+    assert derive(store, RUN, 4, JobState.SUCCEEDED).phase is RunPhase.COMPLETE
+
+
 @pytest.mark.parametrize("phase_keys", [(layout.attempt(RUN, FIRST),), (layout.probes(RUN),)])
 @pytest.mark.parametrize("gone", [JobState.UNKNOWN, JobState.FAILED])
 def test_a_run_under_way_with_no_process_behind_it_is_stalled(

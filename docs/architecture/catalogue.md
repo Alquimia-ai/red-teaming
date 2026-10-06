@@ -5,7 +5,8 @@ MinIO or another S3-compatible store, versioned independently from the platform.
 one schema-version-2 YAML or JSON document and writes canonical JSON at
 `catalogues/<name>/vNNNNN.json`; its digest covers the entire document.
 
-The top-level fields are `schema_version`, `name`, `contract`, `plugins` and `strategies`. The
+The top-level fields are `schema_version`, `name`, `contract`, `plugins`, `strategies` and optional
+`scope` and `description`. The
 embedded contract carries principles, severity weights, rubrics and verdict tokens. A plugin names
 the principle it charges. A strategy declares its plugin, entity kind, transform, `doc` label,
 `requires_brain` and interaction.
@@ -13,6 +14,7 @@ the principle it charges. A strategy declares its plugin, entity kind, transform
 ```yaml
 schema_version: 2
 name: assistant-security
+description: Tests whether the assistant stays in scope and protects private information.
 contract:
   version: v1
   verdict: {positive: [YES], negative: [NO]}
@@ -44,6 +46,47 @@ Localized prompt fields may be a universal string or a map keyed by BCP-47 tag. 
 with an exact match to `RunSpec.context.language`; `es` does not select `es-419`, and no English
 fallback is applied.
 
+## Description
+
+`description` is optional plain-text display metadata. Studio shows it in Settings, Scope and
+Contract; it does not become a rubric or alter the contract's weights or digest. Omission or null
+means no description and is omitted from canonical JSON, preserving legacy document bytes.
+An empty string is accepted and has no visible description. Non-string descriptions are rejected.
+
+Changing a description publishes a new immutable version and changes the catalogue document's
+digest, not the embedded contract's digest. Pinned documents retain their original description.
+`GET /catalogues:library` includes the newest version's `description` (null when absent), alongside
+its versions and scope. The original `GET /catalogues` response remains unchanged.
+
+## Availability
+
+Omitted or null `scope` means global, including every existing catalogue. A specific catalogue
+declares both registry coordinates:
+
+```json
+{
+  "scope": {
+    "agentspace_id": "default",
+    "assistant_id": "test-bpd"
+  }
+}
+```
+
+This is a fragment of the complete document, not a separately published asset. Neither identifier
+may be blank or contain whitespace. `POST /runs:validate` and `POST /runs` compare the pinned
+version's scope with the Alquimia connector's explicit `options.agentspace_id` and
+`options.assistant_id`, rejecting mismatches before freezing or dispatch. A specific catalogue
+cannot be used with a replay connector.
+
+`GET /catalogues:library` returns each name's sorted `versions` and the newest version's `scope`.
+The original `GET /catalogues` name-to-versions response is unchanged. Consumers use the latest
+scope for new selections; older pinned versions retain their original scope. Changing scope
+publishes a new version, not an overwrite. Global serialization omits scope, preserving canonical
+bytes and no-op republication for legacy documents.
+
+Scope describes availability, not authentication. The API still requires a trusted network;
+Studio checks session, workspace membership and catalogue-management permissions server-side.
+
 ## Brain selection
 
 Every strategy states whether it needs the run's brain. A required strategy must place
@@ -67,6 +110,26 @@ pull anything.
 
 Controls have `plugin: null`. Single-turn and scripted controls are valid. Adaptive strategies need
 a plugin because the plugin description and principle provide the attacker's objective.
+
+## Run-specific contract
+
+`RunSpec.contract_scope: selected_strategies` restricts grading to principles referenced by the
+selected attack strategies' plugins. Plugin and strategy selectors intersect when both are supplied.
+A principle stays while any selected attack still references it, including through another plugin.
+Controls are retained by the ordinary selection rules but do not retain a principle. Empty or
+controls-only selections are refused before freezing or dispatch.
+
+Each retained weight becomes `original_weight / sum(retained_original_weights)`. The weights sum
+to 1 and keep their relative severity; rubrics and verdict tokens are unchanged. No catalogue
+version is written. The gate, generation and attack resolve this same effective contract from the
+pinned documents, and report its digest rather than the full catalogue contract's digest.
+
+Omitting `contract_scope`, or setting it to `catalogue`, keeps the full published criterion.
+Existing frozen specifications therefore resume without changing which principles are graded or
+their weights. All selected catalogues must still carry the same original contract, even when
+the selected subset would happen to agree.
+
+## Execution identity
 
 Every target turn uses the same budget, pacing and retry policy. One work unit produces one trace
 containing all turns. The resolved mode, messages, brain declaration, transform and language enter

@@ -302,6 +302,16 @@ def manifest(run_id: str) -> str:
     return f"{run_prefix(run_id)}/manifest.json"
 
 
+def cancel_requested(run_id: str) -> str:
+    """Durable intent: retries and resumes may not launch another runner after this exists."""
+    return f"{run_prefix(run_id)}/cancel-requested.json"
+
+
+def cancelled(run_id: str) -> str:
+    """Written only after the dispatcher confirms the runner has stopped."""
+    return f"{run_prefix(run_id)}/cancelled.json"
+
+
 FAILURES: Final = "failures"
 
 

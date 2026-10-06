@@ -195,7 +195,9 @@ def test_the_attacker_is_told_the_objective_the_approach_and_the_whole_transcrip
     assert transcript == [("opening", "re: opening"), ("more", "re: more")]
 
 
-def test_an_attacker_that_fails_three_times_closes_the_conversation_as_it_stands() -> None:
+def test_an_attacker_that_fails_three_times_closes_the_conversation_as_it_stands(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
     """Not the unit marked failed -- the turns the assistant answered were paid for and are real --
     and not the attempt killed: a provider that blips should not lose a run. The trace says why it
     is shorter than its bound, and the door counts it."""
@@ -211,6 +213,7 @@ def test_an_attacker_that_fails_three_times_closes_the_conversation_as_it_stands
     assert recorded[0].depth == 1
     assert door.ended_early == 1
     assert len(attacker.asked) == 3, "three draws, then the truth"
+    assert "attacker crescendo failed on attempt 3/3: RuntimeError" in caplog.text
 
 
 def test_an_attacker_that_fails_once_is_asked_again() -> None:
@@ -221,6 +224,29 @@ def test_an_attacker_that_fails_once_is_asked_again() -> None:
 
     assert recorded[0].depth == 2
     assert recorded[0].ended == ENDED_BY_ATTACKER
+
+
+def test_wall_budget_expiring_during_attacker_generation_stops_the_attempt() -> None:
+    budget = Budget(max_wall_seconds=1)
+
+    class _SlowAttacker(_Attacker):
+        def next_turn(
+            self,
+            objective: Objective,
+            approach: Sequence[str],
+            transcript: Sequence[tuple[str, str]],
+        ) -> str | None:
+            budget.started_at -= 2
+            return None
+
+    target = _Target()
+    door, recorded = _door(target, [CONDUCTED], _SlowAttacker(), budget=budget)
+
+    with pytest.raises(BudgetExhausted, match="wall-clock"):
+        door.send_planned("opening", CONDUCTED, lambda q, r, c: recorded.append(c))
+
+    assert len(target.calls) == 1
+    assert recorded[0].ended == ENDED_BY_BUDGET
 
 
 def test_a_target_that_fails_a_later_turn_marks_the_unit_failed_as_a_static_one_would() -> None:

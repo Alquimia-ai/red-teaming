@@ -46,6 +46,12 @@ measure with a credential nobody declared. A placeholder the server ignores -- o
 that names the problem -- keeps the environment out of it.
 """
 
+REQUEST_TIMEOUT_SECONDS = 120
+"""A model request must not hold a runner indefinitely when its server keeps generating."""
+
+CLIENT_MAX_RETRIES = 0
+"""Callers own retries and their evidence; the HTTP client must not retry invisibly."""
+
 
 class ProviderUndeclared(ValueError):
     """The spec names no provider, so nothing can be built from it.
@@ -123,6 +129,7 @@ class ProviderBuilder(Protocol):
         api_key: str | None,
         endpoint: str | None,
         rate_limiter: BaseRateLimiter | None,
+        max_tokens: int | None,
     ) -> BaseChatModel: ...
 
 
@@ -164,7 +171,9 @@ def pacing(spec: ModelSpec) -> BaseRateLimiter | None:
     )
 
 
-def build_chat_model(spec: ModelSpec, *, api_key: str | None = None) -> BaseChatModel:
+def build_chat_model(
+    spec: ModelSpec, *, api_key: str | None = None, max_tokens: int | None = None
+) -> BaseChatModel:
     """The model this spec declares, paced as it asked to be.
 
     Args:
@@ -193,6 +202,7 @@ def build_chat_model(spec: ModelSpec, *, api_key: str | None = None) -> BaseChat
         api_key=api_key,
         endpoint=spec.endpoint,
         rate_limiter=pacing(spec),
+        max_tokens=max_tokens,
     )
 
 
@@ -213,6 +223,7 @@ def _build_openrouter(
     api_key: str | None,
     endpoint: str | None,
     rate_limiter: BaseRateLimiter | None,
+    max_tokens: int | None,
 ) -> BaseChatModel:
     """The hosted router, for a cloud deployment that serves no models of its own."""
     # Before the import, so the refusal reads the same whether or not the library is installed: a
@@ -238,6 +249,9 @@ def _build_openrouter(
         temperature=TEMPERATURE,
         rate_limiter=rate_limiter,
         model_kwargs={"provider": ROUTING},
+        max_tokens=max_tokens,
+        timeout=REQUEST_TIMEOUT_SECONDS,
+        max_retries=CLIENT_MAX_RETRIES,
         **optional,
     )
     return built
@@ -249,6 +263,7 @@ def _build_openai_compatible(
     api_key: str | None,
     endpoint: str | None,
     rate_limiter: BaseRateLimiter | None,
+    max_tokens: int | None,
 ) -> BaseChatModel:
     """A server speaking the OpenAI chat-completions API: the appliance's own vLLM, or a gateway.
 
@@ -269,6 +284,9 @@ def _build_openai_compatible(
         api_key=SecretStr(api_key or PLACEHOLDER_KEY),
         temperature=TEMPERATURE,
         rate_limiter=rate_limiter,
+        max_completion_tokens=max_tokens,
+        timeout=REQUEST_TIMEOUT_SECONDS,
+        max_retries=CLIENT_MAX_RETRIES,
     )
     return built
 

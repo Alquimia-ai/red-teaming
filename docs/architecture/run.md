@@ -20,6 +20,11 @@ catalogue published later cannot change what this run generates. The same reques
 and a relaunch; a different request under a frozen id is a 409; `POST /runs:validate` is the gate
 alone.
 
+The frozen `contract_scope` also determines grading. `selected_strategies` keeps only the selected
+attacks' principles and proportionally normalizes their severity weights to 1; omitted or
+`catalogue` keeps the full criterion of older runs. The effective contract digest is identical at
+validation, generation and attack. See [run-specific contracts](catalogue.md#run-specific-contract).
+
 ## 2. Launch
 
 The API asks the platform for one runner: a docker container, a Kubernetes Job or a subprocess,
@@ -29,6 +34,12 @@ docker and the subprocess, as `secretKeyRef`s into the platform's Secret on a cl
 platform's answer to "is it alive" is what `status()` reads back later.
 
 ## 3. Generation
+
+Before generation, a hosted OpenAI-compatible control judge is checked at its authenticated
+`/models` endpoint. The runner waits up to ten minutes through connection errors and HTTP
+502/503/504 while the service starts. Other HTTP errors fail the attempt immediately. No probes
+or target calls are made before the judge responds successfully; cancellation also stops the wait.
+This preflight does not spend the configured attack wall-clock budget.
 
 The runner reads `probes.json` first. If it exists, the set is pinned and nothing is generated. If
 not: the brain is pulled by digest into a temporary directory, every selected catalogue's half that
@@ -74,6 +85,16 @@ from the run and the phase; a consumer that misses it polls the status and reads
 An attempt that dies writes a failure record under its own key -- typed by the kind of transport
 failure when the channel is what died -- exits non-zero so the platform relaunches, and the
 relaunch resumes from the difference.
+
+## Cancellation
+
+`POST /runs/{id}:cancel` first appends `cancel-requested.json`, blocking retry and resume of
+that run id. It then stops the platform runner and, only after the stop is confirmed, appends
+`cancelled.json`. Status reads `cancelling` between those markers and `cancelled` afterward.
+The existing traces and other artifacts remain readable; no manifest is manufactured for an
+incomplete run, and `GET /runs/{id}/result` remains 404. A failed stop returns 503 and leaves
+the request marker so the same call can be retried. A manifest written before cancellation takes
+precedence and the run remains complete.
 
 ## The phase, derived
 

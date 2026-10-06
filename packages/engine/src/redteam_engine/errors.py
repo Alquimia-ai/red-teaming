@@ -18,6 +18,12 @@ from redteam_contracts.failure import (
 )
 
 
+class BudgetExhausted(RuntimeError):
+    """The run hit a ceiling after retaining everything already closed in the store."""
+
+    kind = "budget_exhausted"
+
+
 class TargetFailure(RuntimeError):
     """The channel to the target failed in a way the run could not continue through.
 

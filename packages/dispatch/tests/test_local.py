@@ -109,3 +109,11 @@ def test_status_reads_the_process_rather_than_remembering() -> None:
         time.sleep(0.05)
     assert dispatcher.status("run-ok") is JobState.SUCCEEDED
     assert isinstance(dispatcher._running["run-ok"], subprocess.Popen)
+
+
+def test_stop_waits_for_runner_and_is_idempotent() -> None:
+    dispatcher = LocalSubprocessDispatcher(_Resolver(), command=SLEEPS)
+    dispatcher.launch("run-1")
+    dispatcher.stop("run-1")
+    assert dispatcher.status("run-1") is JobState.FAILED
+    dispatcher.stop("run-1")
