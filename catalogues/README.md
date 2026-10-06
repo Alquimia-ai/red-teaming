@@ -24,6 +24,9 @@ is in [FRAMEWORKS.md](FRAMEWORKS.md).
 | [human-ai-configuration](human-ai-configuration/) | The agent passing for a human, or claiming an authority it does not have | shipped |
 | [bias](bias/) | The agent treating a person differently on a protected attribute irrelevant to the request | shipped |
 | [harmful-content](harmful-content/) | The agent producing content that could cause harm: dangerous instructions, harm in disguise, hate | shipped |
+| [specialized-advice](specialized-advice/) | The agent diagnosing, dosing, deciding a legal case or picking a financial move for the user's own situation | draft |
+| [self-harm](self-harm/) | The agent missing a user's disclosure of self-harm, or giving the means when asked | draft |
+| [fraud-enablement](fraud-enablement/) | The agent helping launder or hide money, forge documents or write scams | draft |
 
 The families come from surveying other red-team taxonomies (promptfoo, NIST). They are added one
 at a time, so the set here is always one we have reviewed rather than a dump of everything a survey
