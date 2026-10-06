@@ -3,8 +3,9 @@
 ## Publish
 
 ```bash
-redteam catalogue validate catalogues/owasp-agent-security.json
-redteam catalogue publish catalogues/owasp-agent-security.json
+python build.py                                        # rebuild the JSON from risks/*.yaml
+redteam catalogue validate security-owasp.json
+redteam catalogue publish security-owasp.json
 ```
 
 Validated in process against `check_document` before this was committed.
