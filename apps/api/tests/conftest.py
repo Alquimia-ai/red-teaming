@@ -42,6 +42,9 @@ class RecordingDispatcher:
     def status(self, run_id: str) -> JobState:
         return self.states.get(run_id, JobState.UNKNOWN)
 
+    def stop(self, run_id: str) -> None:
+        self.states[run_id] = JobState.FAILED
+
 
 def publish_baseline(store: MemoryObjectStore, name: str = CATALOGUE) -> int:
     bundle = load_bundle(BASELINE)

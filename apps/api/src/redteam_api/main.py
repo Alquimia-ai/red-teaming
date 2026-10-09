@@ -5,9 +5,11 @@ POST /runs:validate        the same gate, nothing written, nothing launched
 GET  /runs/{id}            phase from the store, liveness from the platform
 GET  /runs/{id}/result     the manifest, once the run closed
 POST /runs/{id}:resume     launch a runner again; it resumes from the difference
+POST /runs/{id}:cancel     stop its runner; keep all artifacts already written
 POST /catalogues           validate and publish a bundle as one version
 POST /catalogues:validate  the same checks, nothing written
 GET  /catalogues           every published name and its versions
+GET  /catalogues:library   the same library, with the newest version's availability
 POST /priors, GET /priors  the natural-query pools a run measures realism against
 GET  /probes/{digest}      one probe set, by content
 """
@@ -15,6 +17,7 @@ GET  /probes/{digest}      one probe set, by content
 from __future__ import annotations
 
 import json
+from contextlib import suppress
 from http import HTTPStatus
 from typing import Any
 
@@ -22,7 +25,7 @@ from fastapi import FastAPI, HTTPException, Response
 from pydantic import BaseModel, Field
 
 from redteam_api.validation import ValidationFailure, resolve_versions, validate
-from redteam_contracts.catalogue import CatalogueDocument
+from redteam_contracts.catalogue import CatalogueDocument, CatalogueScope
 from redteam_contracts.manifest import RunPhase
 from redteam_contracts.run_spec import RunSpec
 from redteam_dispatch import JobState
@@ -120,7 +123,8 @@ def _gate(spec: RunSpec) -> tuple[RunSpec, str]:
     try:
         versions = resolve_versions(spec, published)
         validate(spec, known_catalogues=frozenset(published))
-        _, contract_digest = deps.shared_contract(versions)
+        deps.require_catalogue_scope(spec, versions)
+        _, contract_digest = deps.shared_contract(versions, spec)
         selection = deps.effective_selection(spec, versions)
         validate(
             spec,
@@ -275,6 +279,8 @@ def _launch(spec: RunSpec) -> bool:
 
     if deps.store().exists(layout.manifest(spec.run_id)):
         return False
+    if deps.store().exists(layout.cancel_requested(spec.run_id)):
+        raise HTTPException(status_code=409, detail=f"run {spec.run_id!r} is being cancelled")
     try:
         deps.dispatcher().launch(spec.run_id, secret_refs=deps.secret_refs_for(spec))
     except AlreadyRunning:
@@ -283,6 +289,14 @@ def _launch(spec: RunSpec) -> bool:
         raise HTTPException(
             status_code=503, detail=f"the platform refused to launch a runner: {refused}"
         ) from refused
+    if deps.store().exists(layout.cancel_requested(spec.run_id)):
+        try:
+            deps.dispatcher().stop(spec.run_id)
+        except DispatchError as refused:
+            raise HTTPException(
+                status_code=503, detail=f"cancellation could not stop the new runner: {refused}"
+            ) from refused
+        raise HTTPException(status_code=409, detail=f"run {spec.run_id!r} is being cancelled")
     return True
 
 
@@ -381,8 +395,43 @@ def resume_run(run_id: str) -> Relaunched:
         raise HTTPException(status_code=404, detail=f"no run {run_id}") from exc
     if deps.store().exists(layout.manifest(run_id)):
         raise HTTPException(status_code=409, detail=f"run {run_id!r} already closed")
+    if deps.store().exists(layout.cancel_requested(run_id)):
+        raise HTTPException(status_code=409, detail=f"run {run_id!r} is being cancelled")
     launched = _launch(spec)
     return Relaunched(run_id=run_id, launched=launched, runner=deps.dispatcher().status(run_id))
+
+
+@app.post("/runs/{run_id}:cancel", response_model=RunStatusResponse)
+def cancel_run(run_id: str) -> RunStatusResponse:
+    """Stop the runner and close the run without discarding completed conversations.
+
+    The intent is claimed before stopping the process, so retries and resumes cannot relaunch it.
+    If dispatch cannot confirm the stop, the intent remains and this route can be retried.
+    """
+    from redteam_api import deps
+    from redteam_dispatch import DispatchError
+    from redteam_store import layout
+    from redteam_store.interface import ObjectAlreadyExists
+
+    store = deps.store()
+    if not store.exists(layout.spec(run_id)):
+        raise HTTPException(status_code=404, detail=f"no run {run_id}")
+    if store.exists(layout.manifest(run_id)):
+        raise HTTPException(status_code=409, detail=f"run {run_id!r} already closed")
+    if not store.exists(layout.cancel_requested(run_id)):
+        with suppress(ObjectAlreadyExists):
+            store.put(layout.cancel_requested(run_id), b"{}", content_type="application/json")
+    if not store.exists(layout.cancelled(run_id)):
+        try:
+            deps.dispatcher().stop(run_id)
+        except DispatchError as error:
+            raise HTTPException(
+                status_code=503, detail=f"the platform could not stop the runner: {error}"
+            ) from error
+        if not store.exists(layout.manifest(run_id)):
+            with suppress(ObjectAlreadyExists):
+                store.put(layout.cancelled(run_id), b"{}", content_type="application/json")
+    return get_run(run_id)
 
 
 # ---- catalogue documents ------------------------------------------------------------------------
@@ -471,6 +520,29 @@ def list_catalogues() -> dict[str, list[int]]:
         if parsed is not None:
             found.setdefault(parsed[0], []).append(parsed[1])
     return {name: sorted(versions) for name, versions in sorted(found.items())}
+
+
+class CatalogueListing(BaseModel):
+    versions: list[int]
+    description: str | None
+    scope: CatalogueScope | None
+    """The newest version's availability. Historical versions keep their own scope."""
+
+
+@app.get("/catalogues:library", response_model=dict[str, CatalogueListing])
+def catalogue_library() -> dict[str, CatalogueListing]:
+    """Names, versions and latest metadata; the original listing remains backwards compatible."""
+    from redteam_api import deps
+    from redteam_catalogue import assets
+
+    store = deps.store()
+    library = {}
+    for name, versions in list_catalogues().items():
+        document = assets.load_document(store, name, versions[-1])
+        library[name] = CatalogueListing(
+            versions=versions, scope=document.scope, description=document.description
+        )
+    return library
 
 
 # ---- priors and probe sets ----------------------------------------------------------------------

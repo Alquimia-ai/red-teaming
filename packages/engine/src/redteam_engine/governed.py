@@ -18,6 +18,7 @@ from gaussia.schemas.roastme import TargetResponse
 from redteam_contracts.failure import TransportFailure
 from redteam_contracts.run_spec import DEFAULT_MAX_RETRIES, ConnectorSpec
 from redteam_engine.call_journal import CallJournal
+from redteam_engine.errors import BudgetExhausted as BudgetExhausted
 from redteam_engine.errors import error_for
 from redteam_engine.failure_policy import Action, policy_for
 from redteam_engine.ledger import FailureLedger
@@ -39,13 +40,6 @@ class SecretResolver(Protocol):
     itself is the runner's to build; this package never imports it."""
 
     def resolve(self, ref: str) -> str: ...
-
-
-class BudgetExhausted(RuntimeError):
-    """The run hit its ceiling. Not a lost run: everything closed is in the store with honest
-    coverage, and the consumer decides whether the partial thing is useful."""
-
-    kind = "budget_exhausted"
 
 
 @dataclass
@@ -217,7 +211,11 @@ class GovernedTarget(TargetAssistant):  # type: ignore[misc]  # gaussia ships no
                     f"attacker was built; the runner refuses this before the first turn"
                 )
             conversation, fatal = conduct_many(
-                query, self._exchange, planned=planned, attacker=attacker
+                query,
+                self._exchange,
+                planned=planned,
+                attacker=attacker,
+                check_time=self._budget.charge_time,
             )
             if conversation is not None:
                 self.conducted += 1

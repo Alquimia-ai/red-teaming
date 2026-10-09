@@ -28,6 +28,16 @@ def test_a_minimal_spec_round_trips_through_json() -> None:
     assert RunSpec.model_validate_json(spec.model_dump_json()) == spec
     assert spec.brain is None and spec.exploit is None and spec.webhook_url is None
     assert spec.catalogue_versions == {}
+    assert spec.contract_scope == "catalogue"
+
+
+def test_selected_contract_scope_is_explicit_and_round_trips() -> None:
+    spec = _spec(contract_scope="selected_strategies")
+    assert (
+        RunSpec.model_validate_json(spec.model_dump_json()).contract_scope == "selected_strategies"
+    )
+    with pytest.raises(ValidationError):
+        _spec(contract_scope="unknown")
 
 
 def test_a_target_that_can_act_is_representable_and_says_so() -> None:

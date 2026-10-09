@@ -7,6 +7,10 @@ happens when the spec is silent.
 
 from __future__ import annotations
 
+import json
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
 import pytest
 from langchain_core.rate_limiters import InMemoryRateLimiter
 
@@ -154,6 +158,74 @@ def test_a_declared_credential_reaches_the_self_hosted_client() -> None:
         api_key="declared",
     )
     assert built.openai_api_key.get_secret_value() == "declared"  # type: ignore[attr-defined]
+
+
+def test_openai_compatible_attacker_requests_are_bounded() -> None:
+    pytest.importorskip("langchain_openai")
+    built = models.build_chat_model(
+        ModelSpec(model="attacker", provider=models.OPENAI_COMPATIBLE, endpoint="http://judge/v1"),
+        max_tokens=512,
+    )
+
+    assert built.max_tokens == 512  # type: ignore[attr-defined]
+    assert built.request_timeout == 120  # type: ignore[attr-defined]
+    assert built.max_retries == 0  # type: ignore[attr-defined]
+
+
+def test_openrouter_attacker_requests_are_bounded() -> None:
+    pytest.importorskip("langchain_openrouter")
+    built = models.build_chat_model(
+        ModelSpec(model="attacker", provider=models.OPENROUTER),
+        api_key="declared",
+        max_tokens=512,
+    )
+
+    assert built.max_tokens == 512  # type: ignore[attr-defined]
+    assert built.request_timeout == 120  # type: ignore[attr-defined]
+    assert built.max_retries == 0  # type: ignore[attr-defined]
+
+
+def test_the_attacker_request_has_a_real_network_deadline_and_output_cap(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    openai = pytest.importorskip("openai")
+    pytest.importorskip("langchain_openai")
+    received: list[dict[str, object]] = []
+    release = threading.Event()
+
+    class _SlowServer(BaseHTTPRequestHandler):
+        def do_POST(self) -> None:
+            size = int(self.headers["Content-Length"])
+            received.append(json.loads(self.rfile.read(size)))
+            release.wait(timeout=2)
+
+        def log_message(self, _format: str, *args: object) -> None:
+            pass
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), _SlowServer)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    monkeypatch.setattr(models, "REQUEST_TIMEOUT_SECONDS", 0.1)
+    try:
+        model = models.build_chat_model(
+            ModelSpec(
+                model="attacker",
+                provider=models.OPENAI_COMPATIBLE,
+                endpoint=f"http://127.0.0.1:{server.server_port}/v1",
+            ),
+            max_tokens=512,
+        )
+
+        with pytest.raises(openai.APITimeoutError):
+            model.invoke("Write a follow-up")
+
+        assert len(received) == 1
+        assert received[0]["max_completion_tokens"] == 512
+    finally:
+        release.set()
+        server.shutdown()
+        server.server_close()
+        thread.join()
 
 
 def test_both_shipped_providers_are_registered_on_import() -> None:

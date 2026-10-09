@@ -80,6 +80,10 @@ def _phase(keys: list[str]) -> RunPhase:
     if any(k.endswith("/manifest.json") for k in keys):
         # COMPLETE by construction: a failed attempt writes under its own key, never here.
         return RunPhase.COMPLETE
+    if any(k.endswith("/cancelled.json") for k in keys):
+        return RunPhase.CANCELLED
+    if any(k.endswith("/cancel-requested.json") for k in keys):
+        return RunPhase.CANCELLING
     if _newest_attempt_died(keys):
         # Not a lost run: everything that closed is in the store, a relaunched runner resumes from
         # the difference, and this reads `complete` once it closes. Until a relaunch begins,

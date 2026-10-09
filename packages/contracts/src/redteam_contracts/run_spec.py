@@ -8,12 +8,14 @@ both are provenance and both have to be declarable.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from redteam_contracts.kb import BrainRef
 from redteam_contracts.serving import ServingPath
+
+ContractScope = Literal["catalogue", "selected_strategies"]
 
 DEFAULT_MAX_RETRIES = 3
 """Enough to ride out a burst of rate limiting; few enough that a target that is down is given up on
@@ -244,6 +246,10 @@ class RunSpec(BaseModel):
 
     plugins: tuple[str, ...]
     strategies: tuple[str, ...]
+    contract_scope: ContractScope = "catalogue"
+    """Selected strategies retain only their plugins' principles, with proportional weights.
+    Omitted preserves the full catalogue contract, including for legacy resumed runs."""
+
     connector: ConnectorSpec
     judge: ModelSpec
     """The control judge: grades every exchange inside the run to steer it. Needs usable

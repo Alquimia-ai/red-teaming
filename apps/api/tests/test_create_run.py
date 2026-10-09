@@ -14,7 +14,7 @@ from redteam_api.main import app
 from redteam_catalogue import assets
 from redteam_catalogue.bundle import load_bundle
 from redteam_contracts.run_spec import RunSpec
-from redteam_dispatch import AlreadyRunning, JobHandle, JobState
+from redteam_dispatch import AlreadyRunning, DispatchError, JobHandle, JobState
 from redteam_store import layout
 from redteam_store.memory import MemoryObjectStore
 
@@ -82,6 +82,46 @@ def test_a_run_is_frozen_with_its_versions_pinned_and_a_runner_launched(
     assert dispatcher.launched == [("run-frozen", ("TARGET_KEY",))]
 
 
+def test_cancel_stops_a_run_and_prevents_relaunch(
+    client: TestClient, store: MemoryObjectStore, dispatcher: RecordingDispatcher
+) -> None:
+    assert client.post("/runs", json=_spec("run-cancelled")).status_code == 202
+    store.put(layout.trace("run-cancelled", "a" * 32, 0), b"{}")
+
+    cancelled = client.post("/runs/run-cancelled:cancel")
+    assert cancelled.status_code == 200
+    assert cancelled.json()["phase"] == "cancelled"
+    assert cancelled.json()["closed"] == 1
+    assert store.exists(layout.trace("run-cancelled", "a" * 32, 0))
+    assert client.post("/runs/run-cancelled:cancel").status_code == 200
+    assert client.post("/runs/run-cancelled:resume").status_code == 409
+    assert client.post("/runs", json=_spec("run-cancelled")).status_code == 409
+    assert dispatcher.launched == [("run-cancelled", ("TARGET_KEY",))]
+
+
+def test_failed_stop_keeps_a_retryable_cancellation_request(
+    client: TestClient,
+    store: MemoryObjectStore,
+    dispatcher: RecordingDispatcher,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    assert client.post("/runs", json=_spec("run-stop-retry")).status_code == 202
+
+    def refused(run_id: str) -> None:
+        raise DispatchError("runner still alive")
+
+    original = dispatcher.stop
+    monkeypatch.setattr(dispatcher, "stop", refused)
+    response = client.post("/runs/run-stop-retry:cancel")
+    assert response.status_code == 503
+    assert store.exists(layout.cancel_requested("run-stop-retry"))
+    assert client.get("/runs/run-stop-retry").json()["phase"] == "cancelling"
+    assert client.post("/runs/run-stop-retry:resume").status_code == 409
+
+    monkeypatch.setattr(dispatcher, "stop", original)
+    assert client.post("/runs/run-stop-retry:cancel").json()["phase"] == "cancelled"
+
+
 def test_the_newest_version_is_pinned_and_a_pin_the_consumer_made_is_kept(
     client: TestClient, store: MemoryObjectStore
 ) -> None:
@@ -107,6 +147,63 @@ def test_a_version_nobody_published_is_refused_before_anything_is_written(
     assert response.status_code == 400
     assert "version 7" in response.json()["detail"]
     assert not store.exists(layout.spec("run-bad-pin"))
+    assert dispatcher.launched == []
+
+
+@pytest.mark.parametrize(
+    "options",
+    [
+        {"agentspace_id": "workspace", "assistant_id": "other"},
+        {"agentspace_id": "other-workspace", "assistant_id": "asst-1"},
+        {"assistant_id": "asst-1"},
+    ],
+)
+def test_catalogue_scope_is_checked_by_both_gates_before_dispatch(
+    client: TestClient,
+    store: MemoryObjectStore,
+    dispatcher: RecordingDispatcher,
+    options: dict[str, str],
+) -> None:
+    document = load_bundle(BASELINE).document.model_dump(mode="json")
+    document["scope"] = {"agentspace_id": "workspace", "assistant_id": "asst-1"}
+    assert client.post("/catalogues", json=document).status_code == 201
+    request = _spec("run-wrong-scope")
+    request["connector"]["options"] = options
+    for route in ("/runs:validate", "/runs"):
+        response = client.post(route, json=request)
+        assert response.status_code == 400
+        assert "reserved for assistant" in response.json()["detail"]
+    assert not store.exists(layout.spec("run-wrong-scope"))
+    assert dispatcher.launched == []
+
+
+def test_matching_scope_runs_and_a_pinned_global_version_remains_global(
+    client: TestClient,
+    store: MemoryObjectStore,
+) -> None:
+    document = load_bundle(BASELINE).document.model_dump(mode="json")
+    document["scope"] = {"agentspace_id": "workspace", "assistant_id": "asst-1"}
+    client.post("/catalogues", json=document)
+    matching = _spec("run-own-scope")
+    matching["connector"]["options"]["agentspace_id"] = "workspace"
+    assert client.post("/runs:validate", json=matching).status_code == 200
+    assert client.post("/runs", json=matching).json()["catalogue_versions"] == {CATALOGUE: 2}
+    historical = _spec("run-global-pin", catalogue_versions={CATALOGUE: 1})
+    assert client.post("/runs", json=historical).status_code == 202
+
+
+def test_a_replay_connector_cannot_claim_a_scoped_assistant_catalogue(
+    client: TestClient,
+    store: MemoryObjectStore,
+    dispatcher: RecordingDispatcher,
+) -> None:
+    document = load_bundle(BASELINE).document.model_dump(mode="json")
+    document["scope"] = {"agentspace_id": "workspace", "assistant_id": "asst-1"}
+    client.post("/catalogues", json=document)
+    request = _spec("run-replay-scope")
+    request["connector"].update(kind="replay", options=document["scope"])
+    assert client.post("/runs", json=request).status_code == 400
+    assert not store.exists(layout.spec("run-replay-scope"))
     assert dispatcher.launched == []
 
 
@@ -332,7 +429,7 @@ def test_catalogues_that_disagree_on_the_contract_are_refused_as_unprocessable(
     )
 
     assert response.status_code == 422
-    assert "different embedded contracts" in response.json()["detail"]
+    assert "catalogues carry 2 different contracts" in response.json()["detail"]
     assert dispatcher.launched == []
 
 
@@ -427,6 +524,47 @@ def test_validate_answers_what_would_be_frozen_and_writes_nothing(
 
     refused = client.post("/runs:validate", json=_spec("run-dry", attackers={}))
     assert refused.status_code == 400
+
+
+def test_gate_freezes_the_selected_criterion_and_reports_its_digest(
+    client: TestClient,
+    store: MemoryObjectStore,
+) -> None:
+    spec = _spec("run-selected", strategies=["ask-identity"], contract_scope="selected_strategies")
+    _, digest = assets.run_contract(
+        store,
+        {CATALOGUE: 1},
+        strategies=("ask-identity",),
+        contract_scope="selected_strategies",
+    )
+    validated = client.post("/runs:validate", json=spec)
+    assert validated.status_code == 200, validated.text
+    assert validated.json()["contract_digest"] == digest
+    accepted = client.post("/runs", json=spec)
+    assert accepted.status_code == 202, accepted.text
+    frozen = RunSpec.model_validate_json(store.get(layout.spec("run-selected")))
+    assert frozen.contract_scope == "selected_strategies"
+    assert client.post("/runs", json={**spec, "contract_scope": "catalogue"}).status_code == 409
+
+
+@pytest.mark.parametrize("strategies", [[], ["ask-scope"]])
+def test_gate_refuses_a_selected_contract_without_attacks(
+    client: TestClient,
+    store: MemoryObjectStore,
+    dispatcher: RecordingDispatcher,
+    strategies: list[str],
+) -> None:
+    response = client.post(
+        "/runs",
+        json=_spec(
+            "run-empty-contract",
+            strategies=strategies,
+            contract_scope="selected_strategies",
+        ),
+    )
+    assert response.status_code == 400, response.text
+    assert not store.exists(layout.spec("run-empty-contract"))
+    assert dispatcher.launched == []
 
 
 def test_the_status_reads_the_store_and_the_platform_and_a_stalled_run_can_be_resumed(

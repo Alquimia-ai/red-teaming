@@ -13,6 +13,7 @@ from typing import Any
 from gaussia.core.target_assistant import TargetAssistant
 from gaussia.schemas.roastme import FailureReport, Probe, ProfilerResult
 
+from redteam_catalogue import assets
 from redteam_catalogue.contract import build_contract
 from redteam_contracts.plan import Plan
 from redteam_contracts.run_spec import RunSpec
@@ -44,7 +45,6 @@ from redteam_engine.resume import (
 )
 from redteam_engine.roast import build_profiler
 from redteam_judges.grading import grader_for
-from redteam_store import contract as contract_store
 from redteam_store import delivery as delivery_store
 from redteam_store import layout
 from redteam_store.interface import ObjectStore
@@ -164,11 +164,17 @@ def attack(
 
     # The Profiler's grading is control: it produces the weakness profile and steers the search. It
     # uses the judge the spec declared under one rule, so a run with no provider profiles with the
-    # stand-in and says so. The contract is the one every selected catalogue carries, at the
-    # versions the run froze -- read from the store, never off a file this image happens to ship.
+    # stand-in and says so. The effective criterion follows the frozen selection and contract scope,
+    # read from pinned store versions, never off a file this image happens to ship.
     judge_key = resolver.resolve(spec.judge.secret_ref) if spec.judge.secret_ref else None
     grader, serving_path, judge_model = grader_for(spec.judge, judge_key)
-    contract_spec, contract_digest = contract_store.shared(store, versions)
+    contract_spec, contract_digest = assets.run_contract(
+        store,
+        versions,
+        plugins=spec.plugins,
+        strategies=spec.strategies,
+        contract_scope=spec.contract_scope,
+    )
     contract = build_contract(contract_spec, grader)
 
     units = list(plan.units)

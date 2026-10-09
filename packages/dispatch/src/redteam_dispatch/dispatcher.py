@@ -76,6 +76,10 @@ class Dispatcher(Protocol):
         """What the platform says about this run's process, right now."""
         ...
 
+    def stop(self, run_id: str) -> None:
+        """Stop its runner and return only when it can no longer write run artifacts."""
+        ...
+
 
 JOB_PREFIX = "redteam-run-"
 """What a run's job is called, before the run id.

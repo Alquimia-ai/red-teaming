@@ -133,6 +133,21 @@ def catalogue_versions() -> dict[str, int]:
     return newest
 
 
+def require_catalogue_scope(spec: RunSpec, versions: Mapping[str, int]) -> None:
+    """Check the pinned documents against the target, before accepting or launching a run."""
+    for name, version in versions.items():
+        scope = assets.load_document(store(), name, version).scope
+        if scope is not None and (
+            spec.connector.kind != "alquimia"
+            or spec.connector.options.get("agentspace_id") != scope.agentspace_id
+            or spec.connector.options.get("assistant_id") != scope.assistant_id
+        ):
+            raise ValueError(
+                f"catalogue {name!r} v{version} is reserved for assistant "
+                f"{scope.assistant_id!r} in agentspace {scope.agentspace_id!r}"
+            )
+
+
 def attackers_named(spec: RunSpec, versions: Mapping[str, int]) -> frozenset[str]:
     """The attacker ids the strategies this run will generate are delivered through, at the
     versions the run is frozen with and under the run's own shape and selectors.
@@ -155,14 +170,20 @@ def attackers_named(spec: RunSpec, versions: Mapping[str, int]) -> frozenset[str
     return frozenset(named)
 
 
-def shared_contract(versions: Mapping[str, int]) -> tuple[ContractSpec, str]:
-    """The one contract every catalogue the run names carries, and its digest.
+def shared_contract(versions: Mapping[str, int], spec: RunSpec) -> tuple[ContractSpec, str]:
+    """The effective contract of the run, and its digest.
 
     Raises:
         ContractMismatch: The catalogues disagree.
         ContractMissing: A published version carries none, which is a store somebody edited.
     """
-    return assets.shared_contract(store(), versions)
+    return assets.run_contract(
+        store(),
+        versions,
+        plugins=spec.plugins,
+        strategies=spec.strategies,
+        contract_scope=spec.contract_scope,
+    )
 
 
 @dataclass(frozen=True)

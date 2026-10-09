@@ -25,6 +25,8 @@ class RunPhase(StrEnum):
     GENERATING = "generating"
     ATTACKING = "attacking"
     COMPLETE = "complete"
+    CANCELLING = "cancelling"
+    CANCELLED = "cancelled"
     FAILED = "failed"
     """Not a lost run. Everything that closed is in the store, and the consumer decides whether the
     partial thing is useful."""

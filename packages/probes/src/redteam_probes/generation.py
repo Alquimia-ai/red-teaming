@@ -62,13 +62,19 @@ def generate_all(
     appends it. `generatable` splits them and what it leaves out is reported rather than dropped in
     silence.
 
-    The contract every selected catalogue carries is resolved once and shared: a run over several
-    catalogues that disagree on the contract is refused here with `ContractMismatch`, and the
-    catalogue of each is validated against that one contract before a probe exists.
+    Selected catalogues must agree on their original contract. The run's effective criterion is
+    then resolved once, optionally restricted and normalized by selection, and validates each
+    selected catalogue before a probe exists.
     """
     brain_declared = request.brain is not None
     versions = resolve_versions(store, request)
-    contract_spec, contract_digest = assets.shared_contract(store, versions)
+    contract_spec, contract_digest = assets.run_contract(
+        store,
+        versions,
+        plugins=request.plugins,
+        strategies=request.strategies,
+        contract_scope=request.contract_scope,
+    )
     from redteam_catalogue.contract import validation_contract
 
     contract = validation_contract(contract_spec)

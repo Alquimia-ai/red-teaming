@@ -4,6 +4,9 @@ Control grading uses logprobs rather than silently switching to repeated samplin
 
 from __future__ import annotations
 
+from typing import Any
+
+from gaussia.core.exceptions import LogprobsExtractionError
 from gaussia.core.grader import Grader
 from gaussia.graders.logprob import LogprobGrader
 from gaussia.schemas.roastme import GraderConfig
@@ -34,6 +37,39 @@ DEFAULT_REASONING_BUDGET = 4096
 DEFAULT_FALLBACK_SAMPLES = 5
 
 DEFAULT_TOP_LOGPROBS = 20
+
+
+class ReasoningLogprobGrader(LogprobGrader):  # type: ignore[misc]  # gaussia ships no stubs
+    """Read inline reasoning envelopes while retaining the provider's token positions and odds.
+
+    Some endpoints return ``reasoning</think>NO`` without whitespace. Gaussia's final-word
+    parser cannot separate that boundary. Only the final-answer view changes here; the logprob
+    sequence remains intact, and its verdict must occur after the reasoning close.
+    """
+
+    def _ask_for_logprobs(self, messages: list[tuple[str, str]]) -> Any:
+        answer = super()._ask_for_logprobs(messages)
+        if answer.response_metadata.get("finish_reason") == "length":
+            raise LogprobsExtractionError("the judge answer exhausted its token budget")
+        if not isinstance(answer.content, str):
+            return answer
+        final_answer = answer.content.rsplit("</think>", 1)[-1]
+        if "<think>" in final_answer:
+            raise LogprobsExtractionError("the judge reasoning envelope did not close")
+        if "</think>" not in answer.content:
+            return answer
+
+        entries = (answer.response_metadata.get("logprobs") or {}).get("content") or []
+        boundary = next(
+            (i for i in range(len(entries) - 1, -1, -1) if entries[i].get("token") == "</think>"),
+            None,
+        )
+        verdict = self._last_verdict_position(entries)
+        if boundary is None or verdict is None or verdict <= boundary:
+            raise LogprobsExtractionError(
+                "no final-answer verdict after the reasoning token boundary"
+            )
+        return answer.model_copy(update={"content": final_answer})
 
 
 def verdict_config(
@@ -67,7 +103,7 @@ def build_grader(model: BaseChatModel, **kwargs: object) -> LogprobGrader:
     The model is built by the caller -- the run spec decides which one in production, a fixture in
     tests. Passing it in rather than naming it is what keeps a measurement's provenance declarable.
     """
-    return LogprobGrader(model, verdict_config(**kwargs))  # type: ignore[arg-type]
+    return ReasoningLogprobGrader(model, verdict_config(**kwargs))  # type: ignore[arg-type]
 
 
 def grader_for(spec: ModelSpec, api_key: str | None) -> tuple[Grader, ServingPath, str | None]:

@@ -146,3 +146,24 @@ def test_a_daemon_this_process_cannot_reach_answers_unknown() -> None:
         client=lambda: httpx.Client(transport=httpx.MockTransport(_down), base_url="http://d"),
     )
     assert dispatcher.status("run-1") is JobState.UNKNOWN
+
+
+def test_stop_waits_for_the_container_to_disappear() -> None:
+    requests: list[httpx.Request] = []
+
+    def daemon(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        if request.url.path.endswith("/stop"):
+            return httpx.Response(HTTPStatus.NO_CONTENT)
+        return httpx.Response(HTTPStatus.NOT_FOUND)
+
+    dispatcher = DockerDispatcher(
+        "img",
+        _Resolver(),
+        client=lambda: httpx.Client(transport=httpx.MockTransport(daemon), base_url="http://d"),
+    )
+    dispatcher.stop("run-1")
+    assert [request.url.path for request in requests] == [
+        "/containers/redteam-run-run-1/stop",
+        "/containers/redteam-run-run-1/json",
+    ]

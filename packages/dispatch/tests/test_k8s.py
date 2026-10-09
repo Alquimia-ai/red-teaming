@@ -197,6 +197,41 @@ def test_a_server_this_process_cannot_reach_answers_unknown() -> None:
     assert dispatcher.status("run-1") is JobState.UNKNOWN
 
 
+def test_stop_deletes_only_the_verified_job_and_waits_for_removal() -> None:
+    requests: list[httpx.Request] = []
+    deleted = False
+
+    def server(request: httpx.Request) -> httpx.Response:
+        nonlocal deleted
+        requests.append(request)
+        if request.method == "DELETE":
+            deleted = True
+            return httpx.Response(HTTPStatus.ACCEPTED)
+        if deleted:
+            return httpx.Response(HTTPStatus.NOT_FOUND)
+        return httpx.Response(
+            HTTPStatus.OK,
+            json={
+                "metadata": {
+                    "uid": "job-uid",
+                    "labels": {
+                        "app.kubernetes.io/name": "red-teaming-runner",
+                        "red-teaming.alquimia.ai/run-id": "run-1",
+                    },
+                }
+            },
+        )
+
+    dispatcher = _dispatcher(
+        _ApiServer(),
+        client=lambda: httpx.Client(transport=httpx.MockTransport(server), base_url="https://k"),
+    )
+    dispatcher.stop("run-1")
+    assert requests[1].method == "DELETE"
+    assert json.loads(requests[1].content)["preconditions"]["uid"] == "job-uid"
+    assert json.loads(requests[1].content)["propagationPolicy"] == "Foreground"
+
+
 def test_outside_a_pod_a_launch_says_so_and_a_status_is_unknown(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

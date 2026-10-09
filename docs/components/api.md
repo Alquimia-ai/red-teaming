@@ -15,9 +15,11 @@ the catalogue package so a bundle is validated and published synchronously.
 | `GET /runs/{id}` | `{run_id, phase, runner, stalled, planned, closed, failed, pending}`; 404 unknown |
 | `GET /runs/{id}/result` | the manifest; 404 until the run closed |
 | `POST /runs/{id}:resume` | 202 `{run_id, launched, runner}`; 409 already closed |
+| `POST /runs/{id}:cancel` | 200 current status (`cancelled` after confirmed stop, or `complete` if completion won the race); 404 unknown; 409 already complete; 503 stop not confirmed, retry the same request |
 | `POST /catalogues` | 201 published `{name, version, key, digest, contract_digest, principles, delivered, created}`; 200 already the newest version; 400 malformed file; 422 a failed check |
 | `POST /catalogues:validate` | 200 `{name, principles, strategies, needs_base, delivered}`, nothing written |
 | `GET /catalogues` | `{name: [versions]}` |
+| `GET /catalogues:library` | `{name: {versions: [versions], scope: null or {agentspace_id, assistant_id}}}`; scope comes from the newest version |
 | `POST /priors`, `GET /priors` | a natural-query prior published (201/200), and every prior's versions |
 | `GET /probes/{digest}` | one probe set, by content |
 

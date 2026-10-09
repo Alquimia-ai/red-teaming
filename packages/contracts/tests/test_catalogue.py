@@ -54,6 +54,15 @@ def test_requires_brain_and_premise_slot_agree() -> None:
         CatalogueDocument.model_validate(_document(requires_brain=False))
 
 
+def test_catalogue_description_is_optional_plain_text() -> None:
+    assert CatalogueDocument.model_validate(_document()).description is None
+    for description in (None, "", "Evalúa el alcance del asistente.\nIncluye presión social."):
+        document = CatalogueDocument.model_validate({**_document(), "description": description})
+        assert document.description == description
+    with pytest.raises(ValidationError):
+        CatalogueDocument.model_validate({**_document(), "description": {"es": "Alcance"}})
+
+
 def test_scripted_and_adaptive_modes_are_shape_checked() -> None:
     scripted = _document(
         interaction={
@@ -67,6 +76,7 @@ def test_scripted_and_adaptive_modes_are_shape_checked() -> None:
         CatalogueDocument.model_validate(
             _document(interaction={"mode": "scripted_multi_turn", "messages": ["{premise}"]})
         )
+
     with pytest.raises(ValidationError, match="must name a plugin"):
         CatalogueDocument.model_validate(
             _document(
@@ -79,3 +89,20 @@ def test_scripted_and_adaptive_modes_are_shape_checked() -> None:
                 },
             )
         )
+
+
+def test_existing_catalogues_are_global_and_scoped_catalogues_require_both_coordinates() -> None:
+    assert CatalogueDocument.model_validate(_document()).scope is None
+    scoped = {**_document(), "scope": {"agentspace_id": "workspace", "assistant_id": "assistant"}}
+    parsed = CatalogueDocument.model_validate(scoped)
+    assert parsed.scope is not None and parsed.scope.assistant_id == "assistant"
+    for scope in (
+        {"assistant_id": "assistant"},
+        {"agentspace_id": "workspace"},
+        {"agentspace_id": "workspace", "assistant_id": " "},
+        {"agentspace_id": "workspace", "assistant_id": "assistant\n"},
+        {"agentspace_id": " workspace", "assistant_id": "assistant"},
+        {"agentspace_id": "workspace", "assistant_id": "assistant", "extra": True},
+    ):
+        with pytest.raises(ValidationError):
+            CatalogueDocument.model_validate({**_document(), "scope": scope})
