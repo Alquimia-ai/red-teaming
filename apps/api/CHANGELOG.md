@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.3.0](https://github.com/Alquimia-ai/red-teaming/compare/api-v0.2.0...api-v0.3.0) (2026-10-09)
+
+
+### Features
+
+* **repo:** harden judge readiness and run-scoped catalogue contracts ([4de74b1](https://github.com/Alquimia-ai/red-teaming/commit/4de74b1f7a7c267c1e732f28f707967adc215406))
+* **repo:** harden judge readiness and run-scoped catalogue contracts ([26f053a](https://github.com/Alquimia-ai/red-teaming/commit/26f053a7cc24b069387e28707705e99c4145fc84))
+
 ## [0.2.0](https://github.com/Alquimia-ai/red-teaming/compare/api-v0.1.2...api-v0.2.0) (2026-09-15)
 
 
