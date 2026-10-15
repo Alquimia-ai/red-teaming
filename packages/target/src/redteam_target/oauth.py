@@ -86,6 +86,7 @@ class ClientCredentialsAuth(httpx.Auth):
                 token_request = httpx.Request(
                     "POST",
                     self._config.token_endpoint,
+                    extensions=request.extensions,
                     data={
                         "grant_type": "client_credentials",
                         "client_id": self._config.client_id,

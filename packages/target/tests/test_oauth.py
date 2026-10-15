@@ -33,6 +33,7 @@ def test_renewal_during_polling_never_resubmits(monkeypatch: pytest.MonkeyPatch)
     def handle(request: httpx.Request) -> httpx.Response:
         if str(request.url) == TOKEN_URL:
             assert "authorization" not in request.headers
+            assert request.extensions["timeout"]["connect"] == 5.0
             assert parse_qs(request.content.decode()) == {
                 "grant_type": ["client_credentials"],
                 "client_id": ["runner"],
