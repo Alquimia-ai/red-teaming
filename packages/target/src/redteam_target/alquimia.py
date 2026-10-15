@@ -24,6 +24,7 @@ from redteam_contracts.failure import (
 )
 from redteam_contracts.run_spec import ConnectorSpec
 from redteam_target.failures import classify, empty_response, failed_response, failure_of
+from redteam_target.oauth import ClientCredentialsAuth, target_auth
 
 _ABSORBED_WHILE_POLLING = frozenset(
     {RATE_LIMITED, UPSTREAM_UNAVAILABLE, SERVER_ERROR, TIMEOUT, NETWORK}
@@ -73,7 +74,7 @@ class AlquimiaTargetAssistant(TargetAssistant):  # type: ignore[misc]  # gaussia
             addresses two different paths on it.
         assistant_id: Which assistant in the registry answers. Travels as a path segment.
         agentspace_id: The registry namespace that assistant lives in.
-        api_key: The credential, already resolved by the caller.
+        api_key: The resolved Bearer credential or OAuth client-credentials JSON secret.
         user_id: Who the runtime attributes these turns to. Worth setting to something that names
             the engagement: the worklog is filterable by it, so it is how somebody later tells an
             evaluation's traffic apart from a real customer's.
@@ -97,7 +98,7 @@ class AlquimiaTargetAssistant(TargetAssistant):  # type: ignore[misc]  # gaussia
         self._base = endpoint.rstrip("/")
         self._assistant_id = assistant_id
         self._agentspace_id = agentspace_id
-        self._headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
+        self._auth = target_auth(api_key, endpoint)
         self._user_id = user_id
         self._poll_interval = poll_interval
         self._deadline = deadline
@@ -123,7 +124,7 @@ class AlquimiaTargetAssistant(TargetAssistant):  # type: ignore[misc]  # gaussia
             try:
                 task_id, minted = self._submit(query, session_id)
             except Exception as error:
-                return failed_response(classify(error), session_id=session_id)
+                return failed_response(self._failure(error), session_id=session_id)
             if not task_id:
                 # Accepted and unanswerable: without a task id there is nothing to poll, and
                 # reporting it as a failure is the only honest move left.
@@ -154,6 +155,11 @@ class AlquimiaTargetAssistant(TargetAssistant):  # type: ignore[misc]  # gaussia
             return None
         return task_id, minted
 
+    def _failure(self, error: Exception) -> TransportFailure:
+        if isinstance(self._auth, ClientCredentialsAuth):
+            error = self._auth.sanitize(error)
+        return classify(error)
+
     def _submit(self, query: str, session_id: str | None) -> tuple[str, str | None]:
         """Hand the query over, and read back the task the answer will arrive under."""
         payload: dict[str, Any] = {"query": query}
@@ -165,7 +171,8 @@ class AlquimiaTargetAssistant(TargetAssistant):  # type: ignore[misc]  # gaussia
             f"{self._base}{_INFER}/{self._assistant_id}",
             params={"agentspace_id": self._agentspace_id},
             json=payload,
-            headers=self._headers,
+            auth=self._auth,
+            follow_redirects=False,
         )
         response.raise_for_status()
         body: dict[str, Any] = response.json()
@@ -193,11 +200,11 @@ class AlquimiaTargetAssistant(TargetAssistant):  # type: ignore[misc]  # gaussia
         last_poll_failure: TransportFailure | None = None
         while True:
             try:
-                response = self._client.get(url, headers=self._headers)
+                response = self._client.get(url, auth=self._auth, follow_redirects=False)
                 response.raise_for_status()
                 record: dict[str, Any] = response.json()
             except Exception as error:
-                last_poll_failure = classify(error)
+                last_poll_failure = self._failure(error)
                 if last_poll_failure.kind not in _ABSORBED_WHILE_POLLING:
                     return failed_response(
                         last_poll_failure, session_id=session_id, raw={"task_id": task_id}

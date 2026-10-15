@@ -61,6 +61,7 @@ tests/           guards · e2e · live
 | [`docs/architecture/`](docs/architecture/) | what a run is, the store, the catalogue bundle, the packages |
 | [`docs/components/`](docs/components/) | the API's routes, the runner's pipeline, the command line |
 | [`docs/deploy/`](docs/deploy/) | the local stack, a cluster, the appliance, a cloud, the models |
+| [`Target authentication`](docs/deploy/target-authentication.md) | static Bearer credentials or renewable Keycloak service tokens |
 | [`docs/release.md`](docs/release.md) | images on `develop`, releases on `main` |
 | [`docs/adr/`](docs/adr/) | the decisions, immutable once accepted |
 | [`CLAUDE.md`](CLAUDE.md) | the invariants, the vocabulary, the guards |
