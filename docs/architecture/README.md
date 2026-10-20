@@ -35,6 +35,7 @@ flowchart LR
 |---|---|
 | [`run.md`](run.md) | What happens to a run, from the gate to the manifest, and how its phase is derived |
 | [`store.md`](store.md) | Where every artifact lives, why identities derive from content, how resumption is a set difference |
+| [`example-run.md`](example-run.md) | What a closed run leaves behind, file by file, with the real bytes of one run: the manifest, the status, the profile, the dataset, a trace |
 | [`catalogue.md`](catalogue.md) | What a catalogue document declares: plugins, strategies, transforms, brain requirements, interactions and the contract |
 | [`packages.md`](packages.md) | What each package owns and what it may import |
 | [`../components/`](../components/) | How each app works: the API's routes, the runner's pipeline, the command line |
